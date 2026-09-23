@@ -1,7 +1,8 @@
 """
 addestra_colpi.py - addestra il classificatore dei colpi sulle pose del
-dataset pubblico "Tennis Player Actions Dataset" (2000 immagini, camera
-dietro il giocatore, 4 classi: dritto, rovescio, servizio, attesa).
+dataset pubblico "Tennis Player Actions Dataset" (camera dietro il
+giocatore). Usiamo solo le classi dritto e rovescio: servizio e posizione
+di attesa sono state escluse.
 
 Usa SOLO i file JSON delle annotazioni: i keypoint sono gia' li' dentro,
 le immagini non servono. Quindi gira in pochi secondi anche senza GPU.
@@ -29,8 +30,7 @@ import joblib
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from caratteristiche import CLASSI, da_annotazione_coco
 
-FILE_CLASSI = {"dritto": "forehand", "rovescio": "backhand",
-               "servizio": "serve", "attesa": "ready_position"}
+FILE_CLASSI = {"dritto": "forehand", "rovescio": "backhand"}
 
 
 def carica(cartella):

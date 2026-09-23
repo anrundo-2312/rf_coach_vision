@@ -1,15 +1,16 @@
 # Classificazione dei colpi
 
-Riconosce dritto, rovescio, servizio e posizione di attesa dalla posa del
-giocatore, un frame alla volta.
+Riconosce dritto e rovescio dalla posa del giocatore, un frame alla volta.
+Le classi servizio e posizione di attesa del dataset non vengono usate.
 
 ## Dati
 
 Dataset pubblico "Tennis Player Actions Dataset" (Mendeley Data,
-DOI 10.17632/nv3rpsxhhk, licenza CC BY 4.0): 2000 immagini, 500 per classe,
-camera **dietro il giocatore** a circa 6,4 m dalla linea di fondo, con i
-keypoint gia' annotati in formato COCO (18 punti: i 17 standard piu' il collo,
-che noi ignoriamo). Serve solo la cartella `annotations`, non le immagini.
+DOI 10.17632/nv3rpsxhhk, licenza CC BY 4.0), camera **dietro il giocatore** a
+circa 6,4 m dalla linea di fondo, keypoint annotati in formato COCO (18 punti:
+i 17 standard piu' il collo, che ignoriamo). Di quel dataset usiamo solo
+`forehand.json` e `backhand.json` (circa 1000 esempi): servizio e posizione di
+attesa sono esclusi. Servono solo le annotazioni, non le immagini.
 
 ## Come si usa
 
@@ -21,10 +22,15 @@ python classificazione/classifica_tracking.py --tracking outputs/<video>_trackin
 
 ## Cosa aspettarsi
 
-In validazione (divisione a blocchi, non casuale) l'accuratezza sulle quattro
-classi e' intorno al 97%, e dritto contro rovescio da solo sfiora il 99%.
-Sono numeri del dataset pubblico: sulla nostra inquadratura, piu' bassa e piu'
-vicina, vanno verificati sui video nostri.
+In validazione (divisione a blocchi di frame consecutivi, non casuale)
+l'accuratezza su dritto contro rovescio e' intorno al 99%. E' un numero del
+dataset pubblico: sulla nostra inquadratura, piu' bassa e piu' vicina, va
+verificato sui video nostri.
+
+Nota: escludendo la posizione di attesa, il modello ha solo due risposte
+possibili e classifichera' come dritto o rovescio ANCHE i frame in cui il
+giocatore sta semplicemente aspettando. Per sapere quando avviene davvero un
+colpo serve la traiettoria della pallina.
 
 Limite di fondo: il modello guarda un frame alla volta e non sa **quando**
 avviene l'impatto. Per quello serve incrociare la traiettoria della pallina

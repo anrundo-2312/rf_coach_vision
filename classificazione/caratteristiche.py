@@ -26,7 +26,9 @@ NOMI_CSV = ["naso", "occhio_sx", "occhio_dx", "orecchio_sx", "orecchio_dx",
             "polso_sx", "polso_dx", "anca_sx", "anca_dx",
             "ginocchio_sx", "ginocchio_dx", "caviglia_sx", "caviglia_dx"]
 
-CLASSI = ["dritto", "rovescio", "servizio", "attesa"]
+# Solo i due colpi che ci interessano: servizio e posizione di attesa sono
+# stati esclusi dal dataset.
+CLASSI = ["dritto", "rovescio"]
 
 
 def caratteristiche(nx, ny, visibile):
