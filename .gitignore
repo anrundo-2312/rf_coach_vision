@@ -1,0 +1,32 @@
+# Pesi dei modelli: troppo grandi per GitHub (limite 100 MB per file;
+# TrackNet_best.pt ne pesa 136). Stanno su Google Drive.
+*.pt
+*.pth
+
+# Video e risultati
+inputs/
+outputs/
+runs/
+tracknet3/pred_result/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.jpg
+*.jpeg
+*.png
+
+# Pacchetto per Colab (rigenerabile con colab/prepara_colab.py)
+colab/*.zip
+
+# Copie di sicurezza locali
+*_backup_*.py
+
+# Clone del repo ultralytics (si installa con pip)
+ultralytics/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

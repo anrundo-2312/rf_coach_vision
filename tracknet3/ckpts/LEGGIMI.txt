@@ -1,0 +1,26 @@
+Questa cartella deve contenere i pesi pre-addestrati di TrackNetV3:
+
+  TrackNet_best.pt        (obbligatorio)
+  InpaintNet_best.pt      (opzionale, corregge le occlusioni)
+
+Non sono stati scaricati automaticamente: sono ospitati su Google
+Drive, che non e' raggiungibile dagli ambienti usati per preparare
+questa integrazione (ne' dal container cloud, ne' dal bridge verso
+questo computer - entrambi bloccati da allowlist di rete).
+
+Scaricali tu manualmente da qui:
+https://drive.google.com/file/d/1CfzE87a0f6LhBp0kniSl1-89zaLCZ8cA/view
+
+Poi estrai lo zip (TrackNetV3_ckpts.zip) e metti i due file .pt
+direttamente in questa cartella (tracknet3/ckpts/), senza sottocartelle.
+
+IMPORTANTE: questi pesi sono addestrati sul badminton (volano) da
+riprese broadcast, non sul tennis dalla vostra angolazione fissa
+dietro il campo. Servono per verificare che la pipeline funzioni
+end-to-end, ma per una precisione buona sulla pallina da tennis nella
+vostra inquadratura servira' fine-tuning sui vostri video (parliamone
+quando siamo a quel punto).
+
+Finche' questi file non ci sono, analyze.py salta automaticamente il
+tracking della pallina senza errori (nessuna pallina disegnata, come
+il comportamento attuale).
