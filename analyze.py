@@ -23,6 +23,7 @@ da cui TrackNet possa dedurre nulla da un solo frame.
 from ultralytics import YOLO
 import sys
 import os
+import csv
 import math
 from collections import deque
 import cv2
@@ -85,6 +86,17 @@ RACKET_MAX_GAP_FRAMES = 6
 # Finestra di anteprima durante l'analisi del video. Su Colab o su qualsiasi
 # macchina senza schermo viene disattivata automaticamente.
 SHOW_PREVIEW = True
+
+# Salvataggio dei dati grezzi: un CSV per video, una riga per frame, con
+# posa, racchetta e pallina. E' il file su cui lavoreranno il rilevamento
+# dei colpi e la classificazione (dritto/rovescio).
+SAVE_TRACKING_CSV = True
+
+# Disegnare anche le posizioni STIMATE della pallina (quelle ricostruite da
+# InpaintNet quando TrackNet non la vede)? Spento: sui video di prova erano
+# spesso lontane dalla pallina vera e davano l'illusione di un tracciamento
+# continuo. Se acceso, vengono disegnate come cerchio vuoto per distinguerle.
+BALL_DRAW_ESTIMATED = False
 
 # Nel terminale viene segnalato quando la pallina "salta" piu' di questi
 # pixel rispetto all'ultima posizione nota: una pallina vera non si sposta
@@ -482,11 +494,17 @@ def draw_ball(frame, position):
         return frame
 
     x, y, conf, source = position
+
+    if conf is None and not BALL_DRAW_ESTIMATED:
+        return frame  # posizione ricostruita: non la disegniamo (vedi config)
     x, y = int(x), int(y)
     label_scale, label_thickness = _label_style(frame)
     radius = 6  # pallino piccolo come in origine, per non coprire la pallina vera
 
-    cv2.circle(frame, (x, y), radius, BALL_COLOR, -1)
+    if conf is None:
+        cv2.circle(frame, (x, y), radius, BALL_COLOR, 2)  # stimata: cerchio vuoto
+    else:
+        cv2.circle(frame, (x, y), radius, BALL_COLOR, -1)
 
     label = f"ball {conf:.2f}" if conf is not None else "ball stimata"
     (text_w, text_h), baseline = cv2.getTextSize(label, LABEL_FONT, label_scale, label_thickness)
@@ -519,6 +537,86 @@ def print_pose_tensors(pose_result):
     print(pose_result.keypoints.orig_shape)
     print("\nShape:")
     print(pose_result.keypoints.data.shape)
+
+
+# Nomi dei 17 keypoint nello schema COCO usato da yolo11n-pose.
+KEYPOINT_NAMES = [
+    "naso", "occhio_sx", "occhio_dx", "orecchio_sx", "orecchio_dx",
+    "spalla_sx", "spalla_dx", "gomito_sx", "gomito_dx", "polso_sx", "polso_dx",
+    "anca_sx", "anca_dx", "ginocchio_sx", "ginocchio_dx", "caviglia_sx", "caviglia_dx",
+]
+
+
+def tracking_header():
+    cols = ["frame", "tempo_s", "giocatore_conf", "giocatore_x1", "giocatore_y1",
+            "giocatore_x2", "giocatore_y2"]
+    for name in KEYPOINT_NAMES:
+        # x,y in pixel; nx,ny normalizzati rispetto al box del giocatore
+        # (0-1: invarianti alla posizione sul campo e alla distanza dalla
+        # camera, sono questi che useremo per classificare i colpi); conf.
+        cols += [f"{name}_x", f"{name}_y", f"{name}_nx", f"{name}_ny", f"{name}_conf"]
+    cols += ["racchetta_x1", "racchetta_y1", "racchetta_x2", "racchetta_y2",
+             "racchetta_conf", "racchetta_fonte",
+             "pallina_x", "pallina_y", "pallina_conf", "pallina_fonte"]
+    return cols
+
+
+def tracking_row(item, fps):
+    """Una riga di dati grezzi per il frame corrente (vedi tracking_header)."""
+
+    box = item["player_box"]
+    row = [item["n"], round((item["n"] - 1) / fps, 4) if fps else "",
+           round(item["player_conf"], 4) if item["player_conf"] is not None else ""]
+    row += [round(float(v), 1) for v in box] if box is not None else ["", "", "", ""]
+
+    kpts = item["keypoints"]  # lista di (x, y, conf) oppure None
+    for i in range(len(KEYPOINT_NAMES)):
+        if kpts is None:
+            row += ["", "", "", "", ""]
+            continue
+        x, y, conf = kpts[i]
+        if box is not None and box[2] > box[0] and box[3] > box[1]:
+            nx = (x - box[0]) / (box[2] - box[0])
+            ny = (y - box[1]) / (box[3] - box[1])
+            row += [round(x, 1), round(y, 1), round(nx, 4), round(ny, 4), round(conf, 4)]
+        else:
+            row += [round(x, 1), round(y, 1), "", "", round(conf, 4)]
+
+    if item["rackets"]:
+        x1, y1, x2, y2, conf = item["rackets"][0]
+        row += [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1), round(conf, 4), "rilevata"]
+    elif item["rackets_est"]:
+        x1, y1, x2, y2, _ = item["rackets_est"][0]
+        row += [round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1), "", "stimata"]
+    else:
+        row += ["", "", "", "", "", ""]
+
+    if item["ball"] is None:
+        row += ["", "", "", ""]
+    else:
+        bx, by, bconf, bsource = item["ball"]
+        row += [round(bx, 1), round(by, 1), round(bconf, 4) if bconf is not None else "", bsource]
+
+    return row
+
+
+def get_keypoints(pose_result, player_idx):
+    """Lista di (x, y, conf) per i 17 keypoint del giocatore, o None."""
+
+    if player_idx is None or pose_result.keypoints is None:
+        return None
+
+    xy = pose_result.keypoints.xy.cpu().numpy()
+    conf = pose_result.keypoints.conf
+    if player_idx >= len(xy):
+        return None
+
+    conf = conf.cpu().numpy() if conf is not None else None
+    return [
+        (float(xy[player_idx][i][0]), float(xy[player_idx][i][1]),
+         float(conf[player_idx][i]) if conf is not None else 0.0)
+        for i in range(len(KEYPOINT_NAMES))
+    ]
 
 
 def _center(det):
@@ -696,6 +794,13 @@ elif extension in video_extensions:
 
 
     frame_number = 0
+
+    tracking_path = os.path.join(output_dir, f"{input_name}_tracking.csv")
+    tracking_file = open(tracking_path, "w", newline="") if SAVE_TRACKING_CSV else None
+    tracking_writer = csv.writer(tracking_file) if tracking_file else None
+    if tracking_writer:
+        tracking_writer.writerow(tracking_header())
+
     last_ball = {"value": None}  # (numero frame, x, y) dell'ultima pallina stampata
 
     def emit(item):
@@ -713,6 +818,9 @@ elif extension in video_extensions:
         frame = draw_ball(frame, item["ball"])
 
         writer.write(frame)
+
+        if tracking_writer:
+            tracking_writer.writerow(tracking_row(item, fps))
 
         print(f"\n--- FRAME {item['n']}/{total_frames} ---")
         print_detection_summary(
@@ -776,6 +884,8 @@ elif extension in video_extensions:
 
         item = {
             "n": frame_number,
+            "player_box": player_box,
+            "keypoints": get_keypoints(pose_result, player_idx),
             "frame": pose_result.plot(img=frame),
             "player_conf": player_conf,
             "rackets": racket_detections,
@@ -817,6 +927,10 @@ elif extension in video_extensions:
 
     cap.release()
     writer.release()
+
+    if tracking_file:
+        tracking_file.close()
+        print(f"Dati per frame salvati in: {tracking_path}")
     try:
         cv2.destroyAllWindows()
     except cv2.error:
