@@ -70,13 +70,19 @@ def main():
 
     video = args.video
     if not video:
-        base = args.colpi.replace("_colpi.csv", "")
-        candidati = sorted(glob.glob(base + "_combined*.mp4"))
+        # i CSV stanno in outputs/dati, i video in outputs/video
+        nome = os.path.basename(args.colpi).replace("_colpi.csv", "")
+        cartella_video = os.path.join(os.path.dirname(os.path.dirname(args.colpi) or "."), "video")
+        candidati = sorted(glob.glob(os.path.join(cartella_video, nome + "_combined*.mp4")))
+        if not candidati:
+            candidati = sorted(glob.glob(args.colpi.replace("_colpi.csv", "") + "_combined*.mp4"))
+        base = os.path.join(cartella_video, nome)
         if not candidati:
             raise SystemExit(f"Non trovo il video: passalo con --video (cercavo {base}_combined*.mp4)")
         video = candidati[-1]
 
     uscita = args.out or video.replace(".mp4", "_colpi.mp4")
+    os.makedirs(os.path.dirname(uscita) or ".", exist_ok=True)
 
     cap = cv2.VideoCapture(video)
     if not cap.isOpened():

@@ -689,8 +689,12 @@ video_extensions = [".mp4", ".avi", ".mov", ".mkv", ".webm"]
 # OUTPUT
 # =========================
 
-output_dir = "outputs"
+# I risultati sono divisi per tipo: i video da guardare in outputs/video,
+# i dati su cui si calcola in outputs/dati.
+output_dir = os.path.join("outputs", "video")
+dati_dir = os.path.join("outputs", "dati")
 os.makedirs(output_dir, exist_ok=True)
+os.makedirs(dati_dir, exist_ok=True)
 
 input_name = os.path.splitext(os.path.basename(input_file))[0]
 
@@ -796,7 +800,7 @@ elif extension in video_extensions:
 
     frame_number = 0
 
-    tracking_path = os.path.join(output_dir, f"{input_name}_tracking.csv")
+    tracking_path = os.path.join(dati_dir, f"{input_name}_tracking.csv")
     tracking_file = open(tracking_path, "w", newline="") if SAVE_TRACKING_CSV else None
     tracking_writer = csv.writer(tracking_file) if tracking_file else None
     if tracking_writer:

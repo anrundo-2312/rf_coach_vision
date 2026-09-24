@@ -10,8 +10,12 @@ colpi e a metriche utili ai maestri e ai loro allievi.
 python analyze.py inputs/<video>.mp4
 ```
 
-Produce `outputs/<video>_combined_<modalita>.mp4` con posa, racchetta e pallina
-disegnate, e stampa frame per frame confidenze e coordinate.
+Produce `outputs/video/<video>_combined_<modalita>.mp4` con posa, racchetta e
+pallina disegnate, e `outputs/dati/<video>_tracking.csv` con una riga per
+frame; stampa frame per frame confidenze e coordinate.
+
+I risultati sono divisi per tipo: in `outputs/video` quelli da guardare, in
+`outputs/dati` i CSV su cui si calcola (tracking, colpi, impatti, metriche).
 
 ## Componenti
 
