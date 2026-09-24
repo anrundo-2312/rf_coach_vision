@@ -483,7 +483,50 @@ def interpolate_box(box_a, box_b, t):
     return tuple(a + (b - a) * t for a, b in zip(box_a[:4], box_b[:4])) + (None,)
 
 
-def draw_ball(frame, position):
+# Su quanti frame visti calcolare la velocita' della pallina: pochi frame
+# danno un valore nervoso, troppi appiattiscono i picchi (e un colpo dura
+# un decimo di secondo).
+BALL_SPEED_WINDOW = 3
+
+
+def ball_speeds(positions, fps):
+    """
+    Velocita' della pallina in pixel al secondo, frame per frame.
+
+    Usa SOLO le posizioni viste davvero da TrackNet: quelle ricostruite
+    darebbero una velocita' inventata. La misura e' presa tra il frame visto
+    BALL_SPEED_WINDOW posizioni prima e quello altrettanto dopo, per non
+    inseguire il tremolio del rilevamento.
+
+    NOTA: pixel al secondo, non km/h. In prospettiva un pixel vale piu'
+    metri in fondo al campo che vicino alla camera, quindi il valore e'
+    confrontabile tra colpi ripresi alla stessa distanza, non in assoluto.
+    Per i km/h serve la calibrazione dalle linee del campo.
+    """
+
+    visti = sorted(f for f, p in positions.items() if p is not None and p[2] is not None)
+    velocita = {}
+
+    for i, f in enumerate(visti):
+        da = visti[max(0, i - BALL_SPEED_WINDOW)]
+        a = visti[min(len(visti) - 1, i + BALL_SPEED_WINDOW)]
+        if a == da:
+            continue
+
+        percorso = 0.0
+        for j in range(visti.index(da), visti.index(a)):
+            x1, y1 = positions[visti[j]][:2]
+            x2, y2 = positions[visti[j + 1]][:2]
+            percorso += math.hypot(x2 - x1, y2 - y1)
+
+        secondi = (a - da) / fps
+        if secondi > 0:
+            velocita[f] = percorso / secondi
+
+    return velocita
+
+
+def draw_ball(frame, position, velocita=None):
     """
     position = (x, y, conf, source) oppure None.
     Etichetta con la stessa dimensione di "person" e "racket" (_label_style)
@@ -508,6 +551,8 @@ def draw_ball(frame, position):
         cv2.circle(frame, (x, y), radius, BALL_COLOR, -1)
 
     label = f"ball {conf:.2f}" if conf is not None else "ball stimata"
+    if velocita is not None and conf is not None:
+        label += f"  {velocita:.0f} px/s"
     (text_w, text_h), baseline = cv2.getTextSize(label, LABEL_FONT, label_scale, label_thickness)
 
     label_x1 = x + radius + 4
@@ -558,7 +603,8 @@ def tracking_header():
         cols += [f"{name}_x", f"{name}_y", f"{name}_nx", f"{name}_ny", f"{name}_conf"]
     cols += ["racchetta_x1", "racchetta_y1", "racchetta_x2", "racchetta_y2",
              "racchetta_conf", "racchetta_fonte",
-             "pallina_x", "pallina_y", "pallina_conf", "pallina_fonte"]
+             "pallina_x", "pallina_y", "pallina_conf", "pallina_fonte",
+             "pallina_velocita_px_s"]
     return cols
 
 
@@ -598,6 +644,9 @@ def tracking_row(item, fps):
         bx, by, bconf, bsource = item["ball"]
         row += [round(bx, 1), round(by, 1), round(bconf, 4) if bconf is not None else "", bsource]
 
+    v = item.get("ball_velocita")
+    row += ["" if v is None else round(v)]
+
     return row
 
 
@@ -626,7 +675,8 @@ def _center(det):
 
 
 def print_detection_summary(player_conf, racket_detections, racket_discarded=(), ball_position=None,
-                            ball_searched=True, racket_estimated=(), prev_ball=None):
+                            ball_searched=True, racket_estimated=(), prev_ball=None,
+                            velocita_pallina=None):
     """
     Stampa per il frame corrente confidenza e posizione (in pixel del video,
     x da sinistra, y dall'alto) di giocatore, racchetta e pallina.
@@ -656,7 +706,8 @@ def print_detection_summary(player_conf, racket_detections, racket_discarded=(),
         x, y, conf, source = ball_position
         pos = (int(x), int(y))
         if conf is not None:
-            print(f"Pallina: conf={conf:.2f}  pos={pos}")
+            v = f"  {velocita_pallina:.0f} px/s" if velocita_pallina is not None else ""
+            print(f"Pallina: conf={conf:.2f}  pos={pos}{v}")
         else:
             print(f"Pallina: posizione stimata (ricostruita dalla traiettoria)  pos={pos}")
 
@@ -761,6 +812,7 @@ elif extension in video_extensions:
     # =========================
 
     ball_positions = ball_tracknet.compute_ball_trajectory(input_file, TRACKNET_MODE, force=TRACKNET_FORCE_RECOMPUTE)
+    ball_velocita = ball_speeds(ball_positions, fps)
 
     output_file = os.path.join(output_dir, f"{input_name}_combined_{TRACKNET_MODE}.mp4")
 
@@ -820,7 +872,7 @@ elif extension in video_extensions:
         frame = item["frame"]
         frame = draw_racket(frame, item["rackets"])
         frame = draw_racket(frame, item["rackets_est"], estimated=True)
-        frame = draw_ball(frame, item["ball"])
+        frame = draw_ball(frame, item["ball"], item["ball_velocita"])
 
         writer.write(frame)
 
@@ -831,7 +883,7 @@ elif extension in video_extensions:
         print_detection_summary(
             item["player_conf"], item["rackets"], item["discarded"],
             item["ball"], racket_estimated=item["rackets_est"],
-            prev_ball=last_ball["value"],
+            prev_ball=last_ball["value"], velocita_pallina=item["ball_velocita"],
         )
         if item["ball"] is not None:
             last_ball["value"] = (item["n"], item["ball"][0], item["ball"][1])
@@ -897,6 +949,7 @@ elif extension in video_extensions:
             "discarded": racket_discarded,
             "rackets_est": [],
             "ball": ball_position,
+            "ball_velocita": ball_velocita.get(frame_number - 1),
         }
 
         # RIEMPIMENTO BUCHI RACCHETTA
