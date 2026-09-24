@@ -75,7 +75,7 @@ TRACKNET_MODE = "weight"       # USA QUI NON OVERLAP o WEIGHT
 #            salvato (lento: su CPU in 4K circa 20 minuti in weight).
 # Nota: il video di output in outputs/ viene sempre sovrascritto a ogni
 # esecuzione, indipendentemente da questa opzione.
-TRACKNET_FORCE_RECOMPUTE = True
+TRACKNET_FORCE_RECOMPUTE = False
 
 # Riempimento dei buchi della racchetta: se la racchetta sparisce per al
 # massimo questo numero di frame e poi ricompare, le posizioni mancanti
