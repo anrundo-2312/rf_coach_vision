@@ -161,6 +161,10 @@ def main():
                 voti = [classi[int(righe[j]["frame"])]
                         for j in range(max(0, i - FINESTRA_VOTO), min(len(righe), i + FINESTRA_VOTO + 1))
                         if int(righe[j]["frame"]) in classi]
+                # "attesa" non e' un colpo: se il modello la conosce, la
+                # escludiamo dal voto. Se attorno all'impatto ci fosse SOLO
+                # attesa, il colpo resta vuoto: probabile falso positivo.
+                voti = [v for v in voti if v[0] != "attesa"]
                 if voti:
                     colpo, _ = Counter(v[0] for v in voti).most_common(1)[0]
                     sicurezza = round(float(np.mean([s for c, s in voti if c == colpo])), 3)

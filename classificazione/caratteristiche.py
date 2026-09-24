@@ -26,9 +26,11 @@ NOMI_CSV = ["naso", "occhio_sx", "occhio_dx", "orecchio_sx", "orecchio_dx",
             "polso_sx", "polso_dx", "anca_sx", "anca_dx",
             "ginocchio_sx", "ginocchio_dx", "caviglia_sx", "caviglia_dx"]
 
-# Solo i due colpi che ci interessano: servizio e posizione di attesa sono
-# stati esclusi dal dataset.
-CLASSI = ["dritto", "rovescio"]
+# Tutte le classi disponibili nel dataset. Quali usare davvero si sceglie al
+# momento dell'addestramento (opzione --classi di addestra_colpi.py): il
+# modello salva l'elenco di quelle con cui e' stato addestrato, e il resto
+# della pipeline lo legge da li'.
+CLASSI = ["dritto", "rovescio", "servizio", "attesa"]
 
 
 def caratteristiche(nx, ny, visibile):
