@@ -25,7 +25,12 @@ import csv
 import os
 from collections import Counter
 
+import sys
+
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sincronizza_drive
 
 # Un'inversione conta come colpo solo se la pallina, prima e dopo, percorre
 # almeno questa frazione dell'altezza del giocatore: sotto, e' rumore o un
@@ -177,6 +182,7 @@ def main():
             print(f"  frame {r['frame']:>4s}  {float(r['tempo_s']):5.2f}s  {chi}{etichetta}")
 
     print(f"\nSalvato in {uscita}")
+    sincronizza_drive.copia(uscita, "outputs")
 
 
 if __name__ == "__main__":

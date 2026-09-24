@@ -30,6 +30,7 @@ import cv2
 import numpy as np
 
 import ball_tracknet
+import sincronizza_drive
 
 # =========================
 # CONFIGURAZIONE
@@ -931,6 +932,7 @@ elif extension in video_extensions:
     if tracking_file:
         tracking_file.close()
         print(f"Dati per frame salvati in: {tracking_path}")
+        sincronizza_drive.copia(tracking_path, "outputs")
     try:
         cv2.destroyAllWindows()
     except cv2.error:

@@ -23,7 +23,10 @@ import numpy as np
 import joblib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from caratteristiche import da_riga_tracking
+
+import sincronizza_drive
 
 QUI = os.path.dirname(os.path.abspath(__file__))
 
@@ -63,6 +66,7 @@ def main():
 
     print(f"{len(X)} frame classificati su {len(righe)} (gli altri senza giocatore rilevato)")
     print("Salvato in", uscita)
+    sincronizza_drive.copia(uscita, "outputs")
 
     tratti = []
     for i, c in zip(frame, previsioni):

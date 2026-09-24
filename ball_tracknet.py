@@ -33,6 +33,8 @@ import subprocess
 import sys
 import time
 
+import sincronizza_drive
+
 TRACKNET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracknet3")
 TRACKNET_CKPT = os.path.join(TRACKNET_DIR, "ckpts", "TrackNet_best.pt")
 INPAINTNET_CKPT = os.path.join(TRACKNET_DIR, "ckpts", "InpaintNet_best.pt")
@@ -106,6 +108,7 @@ def compute_ball_trajectory(video_file, mode="weight", force=False):
 
     if result.returncode == 0 and os.path.exists(raw_csv):
         print(f"TrackNet ({mode}) completato in {minutes:.1f} minuti.")
+        sincronizza_drive.copia(csv_path, "pred_result")
         try:
             os.replace(raw_csv, csv_path)  # sovrascrive l'eventuale risultato precedente
         except PermissionError:

@@ -26,8 +26,13 @@ cambiano se il giocatore e' piu' vicino o piu' lontano dalla camera.
 
 import argparse
 import csv
+import os
+import sys
 
 import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import sincronizza_drive
 
 # Quanti frame prima e dopo l'impatto guardare per stimare la velocita'.
 FINESTRA_VELOCITA = 20
@@ -123,6 +128,7 @@ def main():
             print(f"{e['colpo'] or '?':10s} {float(e['tempo_s']):5.2f}s  {rel:7.2f}  {zona:<18s} {lato:<9s} {distanza:5.2f}  {fmt(v_prima)} / {fmt(v_dopo)}")
 
     print(f"\nSalvato in {uscita}")
+    sincronizza_drive.copia(uscita, "outputs")
     print("Nota: velocita' in pixel al secondo. Per i km/h serve la calibrazione dal campo.")
 
 
