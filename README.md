@@ -26,8 +26,13 @@ I risultati sono divisi per tipo: in `outputs/video` quelli da guardare, in
   e modalita'.
 - `tracknet3/` - TrackNetV3 vendorizzato (https://github.com/qaz812345/TrackNetV3,
   licenza MIT) con modifiche minime documentate in testa a `predict.py`.
-- `colab/` - `prepara_colab.py` crea lo zip da caricare su Google Drive;
-  `rf_coach_colab.ipynb` esegue l'analisi su GPU T4.
+- `classificazione/` - classificatore dei colpi (dritto, rovescio, servizio,
+  attesa), rilevamento degli impatti e metriche: vedi `classificazione/LEGGIMI.md`.
+  I modelli usati dalla pipeline sono spiegati in `MODELLI.md`.
+- `colab/` - `rf_coach_colab.ipynb` esegue su GPU T4 analisi, classificazione
+  dei colpi e salvataggio dei risultati: prende il codice da GitHub e i file
+  pesanti da Google Drive. `prepara_colab.py` crea lo zip del vecchio metodo
+  (codice caricato su Drive), che il notebook non usa piu'.
 
 ## File non presenti nel repository
 
