@@ -1,0 +1,229 @@
+{
+ "video": "zverev_djokovic_trim_swin_like",
+ "fotogramma": 90,
+ "dimensioni": [
+  3840,
+  2160
+ ],
+ "data": "2026-09-28",
+ "punti_px": {
+  "servizio_vicino_sx": [
+   457.1,
+   1273.1
+  ],
+  "T_vicino": [
+   1967.1,
+   1270.5
+  ],
+  "servizio_vicino_dx": [
+   3498.9,
+   1267.9
+  ],
+  "fondo_vicino_sx_doppio": [
+   -874.2,
+   1743.5
+  ],
+  "fondo_vicino_sx_singolo": [
+   -147.4,
+   1741.5
+  ],
+  "fondo_vicino_centro": [
+   1958.4,
+   1735.6
+  ],
+  "fondo_vicino_dx_singolo": [
+   4084.4,
+   1729.6
+  ],
+  "fondo_vicino_dx_doppio": [
+   4791.5,
+   1727.6
+  ],
+  "servizio_lontano_sx": [
+   1066.8,
+   800.6
+  ],
+  "T_lontano": [
+   1976.0,
+   799.2
+  ],
+  "servizio_lontano_dx": [
+   2903.0,
+   797.9
+  ],
+  "fondo_lontano_sx_singolo": [
+   1200.1,
+   697.3
+  ],
+  "fondo_lontano_dx_singolo": [
+   2772.1,
+   694.6
+  ],
+  "fondo_lontano_sx_doppio": [
+   934.6,
+   697.7
+  ],
+  "fondo_lontano_dx_doppio": [
+   3040.1,
+   694.1
+  ],
+  "rete_centro_alto": [
+   1969.0,
+   720.0
+  ],
+  "palo_sx_alto": [
+   176.0,
+   681.0
+  ],
+  "palo_dx_alto": [
+   3785.0,
+   675.0
+  ]
+ },
+ "punti_metri": {
+  "servizio_vicino_sx": [
+   1.37,
+   5.485,
+   0.0
+  ],
+  "T_vicino": [
+   5.485,
+   5.485,
+   0.0
+  ],
+  "servizio_vicino_dx": [
+   9.6,
+   5.485,
+   0.0
+  ],
+  "fondo_vicino_sx_doppio": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "fondo_vicino_sx_singolo": [
+   1.37,
+   0.0,
+   0.0
+  ],
+  "fondo_vicino_centro": [
+   5.485,
+   0.0,
+   0.0
+  ],
+  "fondo_vicino_dx_singolo": [
+   9.6,
+   0.0,
+   0.0
+  ],
+  "fondo_vicino_dx_doppio": [
+   10.97,
+   0.0,
+   0.0
+  ],
+  "servizio_lontano_sx": [
+   1.37,
+   18.285,
+   0.0
+  ],
+  "T_lontano": [
+   5.485,
+   18.285,
+   0.0
+  ],
+  "servizio_lontano_dx": [
+   9.6,
+   18.285,
+   0.0
+  ],
+  "fondo_lontano_sx_singolo": [
+   1.37,
+   23.77,
+   0.0
+  ],
+  "fondo_lontano_dx_singolo": [
+   9.6,
+   23.77,
+   0.0
+  ],
+  "fondo_lontano_sx_doppio": [
+   0.0,
+   23.77,
+   0.0
+  ],
+  "fondo_lontano_dx_doppio": [
+   10.97,
+   23.77,
+   0.0
+  ],
+  "rete_centro_alto": [
+   5.485,
+   11.885,
+   0.914
+  ],
+  "palo_sx_alto": [
+   -0.914,
+   11.885,
+   1.07
+  ],
+  "palo_dx_alto": [
+   11.884,
+   11.885,
+   1.07
+  ]
+ },
+ "K": [
+  [
+   7181.227533999796,
+   0.0,
+   1920.0
+  ],
+  [
+   0.0,
+   7181.227533999796,
+   1080.0
+  ],
+  [
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "rvec": [
+  1.7091630987282822,
+  0.006275224825639036,
+  -0.012156604086752874
+ ],
+ "tvec": [
+  -5.4160094836626795,
+  1.286730120980127,
+  13.992732690216455
+ ],
+ "errore_rms_px": 6.676545911555679,
+ "errore_per_punto_px": {
+  "fondo_vicino_sx_doppio": 14.98,
+  "fondo_vicino_sx_singolo": 11.74,
+  "fondo_vicino_centro": 3.05,
+  "fondo_vicino_dx_singolo": 1.89,
+  "fondo_vicino_dx_doppio": 5.56,
+  "servizio_vicino_sx": 11.48,
+  "T_vicino": 1.2,
+  "servizio_vicino_dx": 1.15,
+  "palo_sx_alto": 7.31,
+  "rete_centro_alto": 6.95,
+  "palo_dx_alto": 6.46,
+  "servizio_lontano_sx": 6.72,
+  "T_lontano": 5.38,
+  "servizio_lontano_dx": 2.66,
+  "fondo_lontano_sx_doppio": 1.07,
+  "fondo_lontano_sx_singolo": 3.54,
+  "fondo_lontano_dx_singolo": 2.95,
+  "fondo_lontano_dx_doppio": 3.86
+ },
+ "camera_in_metri": [
+  5.58,
+  -13.62,
+  3.18
+ ],
+ "focale_px": 7181.2
+}

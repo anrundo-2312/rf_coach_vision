@@ -1,0 +1,119 @@
+{
+ "video": "nicola_matarese_trim",
+ "fotogramma": 120,
+ "dimensioni": [
+  1920,
+  1080
+ ],
+ "data": "2026-09-25",
+ "punti_px": {
+  "servizio_vicino_sx": [
+   617.0,
+   869.0
+  ],
+  "T_vicino": [
+   1096.0,
+   880.0
+  ],
+  "servizio_vicino_dx": [
+   1600.0,
+   900.0
+  ],
+  "rete_terra_centro": [
+   1094.0,
+   797.0
+  ],
+  "palo_sx_alto": [
+   614.0,
+   700.0
+  ],
+  "rete_centro_alto": [
+   1094.0,
+   722.0
+  ],
+  "palo_dx_alto": [
+   1607.0,
+   716.0
+  ]
+ },
+ "punti_metri": {
+  "servizio_vicino_sx": [
+   1.37,
+   5.485,
+   0.0
+  ],
+  "T_vicino": [
+   5.485,
+   5.485,
+   0.0
+  ],
+  "servizio_vicino_dx": [
+   9.6,
+   5.485,
+   0.0
+  ],
+  "rete_terra_centro": [
+   5.485,
+   11.885,
+   0.0
+  ],
+  "palo_sx_alto": [
+   -0.914,
+   11.885,
+   1.07
+  ],
+  "rete_centro_alto": [
+   5.485,
+   11.885,
+   0.914
+  ],
+  "palo_dx_alto": [
+   11.884,
+   11.885,
+   1.07
+  ]
+ },
+ "K": [
+  [
+   1418.749325432089,
+   0.0,
+   960.0
+  ],
+  [
+   0.0,
+   1418.749325432089,
+   540.0
+  ],
+  [
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "rvec": [
+  1.5104513399475186,
+  0.08055290533754282,
+  -0.06541153000626053
+ ],
+ "tvec": [
+  -4.84470835230397,
+  2.5215665922953105,
+  7.009083019689882
+ ],
+ "errore_rms_px": 2.5818868234033676,
+ "errore_per_punto_px": {
+  "servizio_vicino_sx": 1.4,
+  "T_vicino": 3.43,
+  "servizio_vicino_dx": 2.62,
+  "rete_terra_centro": 3.92,
+  "palo_sx_alto": 1.19,
+  "rete_centro_alto": 0.16,
+  "palo_dx_alto": 3.04
+ },
+ "camera_in_metri": [
+  5.46,
+  -6.66,
+  2.17
+ ],
+ "focale_px": 1418.7
+}

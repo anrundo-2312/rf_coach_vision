@@ -29,6 +29,10 @@ I risultati sono divisi per tipo: in `outputs/video` quelli da guardare, in
 - `classificazione/` - classificatore dei colpi (dritto, rovescio, servizio,
   attesa), rilevamento degli impatti e metriche: vedi `classificazione/LEGGIMI.md`.
   I modelli usati dalla pipeline sono spiegati in `MODELLI.md`.
+- `velocita/` - velocita' di uscita della pallina in km/h e direzione del colpo
+  (lungo linea / incrociato / centrale) per il giocatore inquadrato, con la
+  calibrazione del campo: vedi `velocita/LEGGIMI.md`; come funziona in
+  `velocita/COME_FUNZIONA.md`.
 - `colab/` - `rf_coach_colab.ipynb` esegue su GPU T4 analisi, classificazione
   dei colpi e salvataggio dei risultati: prende il codice da GitHub e i file
   pesanti da Google Drive. `prepara_colab.py` crea lo zip del vecchio metodo
