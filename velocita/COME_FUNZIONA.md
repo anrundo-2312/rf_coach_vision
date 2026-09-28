@@ -230,6 +230,18 @@ Tre cose fanno funzionare questa scelta:
 
 Se un video ha la sua calibrazione (`calibrazioni/<video>.json`), si usa quella. Per questo i video di Nicola e di Djokovic continuano a dare gli stessi risultati.
 
+### 5.5 Calibrare su Colab: `calibra_colab.py`
+
+`calibra_campo.py` apre una finestra di OpenCV e legge mouse e tastiera, cosa che richiede uno schermo collegato al computer su cui gira il programma. Colab gira su un server di Google senza schermo, quindi lì la finestra non si apre. Per i video girati fuori dalla posizione standard c'è `calibra_colab.py`, la cella 7c del notebook, che cambia solo il modo di cliccare:
+
+1. Python legge il fotogramma e lo manda al browser come JPEG, insieme all'elenco dei punti del campo (gli stessi 23 di `calibra_campo.py`).
+2. Un pezzetto di JavaScript disegna nella cella il fotogramma, la lente e lo schema del campo, e raccoglie i clic e i tasti. Le coordinate del clic vengono riportate ai pixel del fotogramma originale, anche se nel notebook l'immagine è rimpicciolita.
+3. Quando si preme F, i punti tornano a Python (`google.colab.output.eval_js` aspetta la fine dei clic). Da qui calcolo e salvataggio sono quelli di `calibra_campo.py`: stesso JSON, stessa immagine di controllo. Il JSON viene copiato anche su Drive in `calibrazioni/`, così la cella 4 lo riporta nelle sessioni successive.
+
+Il costo di calcolo è trascurabile: la stima della camera richiede circa 0,1 secondi di CPU e non usa la GPU. Il tempo è quello dei clic, una volta per ogni posizione della camera.
+
+Prova: ho cliccato in un browser automatico i 7 punti del video di Nicola nelle posizioni già note. I punti sono tornati entro 1 pixel e la camera è uscita uguale: (5,44; −6,66; 2,16) m e focale 1418 px, contro (5,46; −6,66; 2,17) m e 1419 px.
+
 ---
 
 ## 6. Il rilevatore locale della pallina: come l'ho fatto

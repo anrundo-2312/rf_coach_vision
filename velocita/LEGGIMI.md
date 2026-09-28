@@ -27,6 +27,9 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
 - `calibra_campo.py` - la calibrazione: si cliccano i punti del campo visibili
   su un fotogramma. Serve solo per i video girati con la camera in una
   posizione diversa da quella standard (vedi sotto).
+- `calibra_colab.py` - la stessa calibrazione dentro il notebook di Colab
+  (cella 7c): i clic li legge il browser, calcolo e file sono quelli di
+  `calibra_campo.py`.
 - `palla_locale.py` - rilevatore della pallina per colore, attorno al
   giocatore, dove TrackNet la perde.
 - `velocita_uscita.py` - il programma principale: trova i colpi e calcola
@@ -63,7 +66,8 @@ colonna `calibrazione` dice quale ha usato, e sul video compare
 primo fotogramma con il campo della calibrazione disegnato in verde (su Colab
 compare sotto la cella 7b). Se le righe verdi cadono su quelle vere il
 telefono era messo bene; se no, le velocita' di quel video non sono
-affidabili e serve una calibrazione propria (`calibra_campo.py`).
+affidabili e serve una calibrazione propria (cella 7c su Colab, oppure
+`calibra_campo.py` sul PC).
 
 Quanto conta mettere il telefono esattamente come lo standard (simulazione:
 calibrazione standard, camera vera spostata, un servizio a 90 km/h e un
@@ -93,8 +97,14 @@ la 9 (anteprima). Se il telefono era messo nella posizione standard non serve
 altro: la 7b usa la calibrazione standard e mostra l'immagine di controllo.
 
 Solo se l'immagine di controllo non torna, o per i video girati in un altro
-modo, serve la calibrazione del video, sul PC (e' interattiva ma leggera: apre
-un solo fotogramma, anche con il video solo su Drive):
+modo, serve la calibrazione del video. Si fa nella cella 7c, direttamente su
+Colab: si mette `CALIBRA = True`, si cliccano i punti sul fotogramma che
+compare nella cella, e la cella salva la calibrazione anche su Drive in
+`calibrazioni/` (vale per le sessioni successive) e rifa' velocita' e video.
+Il calcolo dura meno di un secondo e non usa la GPU: il tempo e' solo quello
+dei clic, una volta per posizione della camera.
+
+In alternativa si puo' fare sul PC (anche con il video solo su Drive):
 
 ```
 python velocita/calibra_campo.py "G:/Il mio Drive/rf_coach_vision/inputs/<video>.mp4"
@@ -137,6 +147,10 @@ in basso a sinistra mostra dov'e' sul campo, la lente in alto ingrandisce
 attorno al mouse. Tasti: clic = segna, S = non visibile, U = annulla,
 frecce o IJKL = sposta di un pixel l'ultimo punto, `,` e `.` = fotogramma
 precedente/successivo (se il giocatore copre le righe), F = fine, Esc = esci.
+
+Su Colab (cella 7c) i punti e i tasti sono gli stessi, con due differenze:
+il fotogramma si cambia con `FOTOGRAMMA` nella cella, e si puo' cliccare
+nella lente per correggere l'ultimo punto.
 
 Consigli:
 - almeno 6 punti, sparsi: vicino, rete, lontano. Le cime della rete e dei pali

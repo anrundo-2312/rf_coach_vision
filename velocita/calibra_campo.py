@@ -8,7 +8,8 @@ posizione della camera: finche' la camera non si muove, vale per tutto il video.
 Non e' obbligatoria: i video senza calibrazione propria usano quella standard,
 calibrazioni/standard.json, pensata per il telefono messo sempre allo stesso
 modo, come con SwingVision (LEGGIMI.md, "Calibrazione standard"). Qui si fa
-la calibrazione per i video girati diversamente.
+la calibrazione per i video girati diversamente. Su Colab, dove le finestre non
+si aprono, c'e' calibra_colab.py (cella 7c del notebook).
 
     python velocita/calibra_campo.py inputs/<video>.mp4
     python velocita/calibra_campo.py inputs/<video>.mp4 --frame 120
