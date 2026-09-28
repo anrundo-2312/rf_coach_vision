@@ -5,6 +5,11 @@ Serve a passare dai pixel ai metri: e' il primo passo per la velocita' della
 pallina in km/h (vedi LEGGIMI.md in questa cartella). Si fa UNA volta per ogni
 posizione della camera: finche' la camera non si muove, vale per tutto il video.
 
+Non e' obbligatoria: i video senza calibrazione propria usano quella standard,
+calibrazioni/standard.json, pensata per il telefono messo sempre allo stesso
+modo, come con SwingVision (LEGGIMI.md, "Calibrazione standard"). Qui si fa
+la calibrazione per i video girati diversamente.
+
     python velocita/calibra_campo.py inputs/<video>.mp4
     python velocita/calibra_campo.py inputs/<video>.mp4 --frame 120
     python velocita/calibra_campo.py inputs/<video>.mp4 --verifica     (solo immagine di controllo)
@@ -47,6 +52,8 @@ sys.path.insert(0, QUI)
 from rf_ball_exit_speed import calibrate_camera, project  # file di calcolo della velocita'
 
 CARTELLA_CALIBRAZIONI = os.path.join(QUI, "calibrazioni")
+# Usata per i video senza calibrazione propria (vedi carica_per_video).
+STANDARD = os.path.join(CARTELLA_CALIBRAZIONI, "standard.json")
 
 # Punti noti del campo, in metri: x = larghezza (0 = riga del doppio a SINISTRA
 # nell'immagine, 10.97 = a destra), y = lunghezza (0 = fondo dal lato della
@@ -124,8 +131,53 @@ def camera_da_json(cal):
             "tvec": np.array(cal["tvec"], float).reshape(3, 1)}
 
 
+def adatta_risoluzione(cal, larghezza, altezza):
+    """
+    La stessa calibrazione per un video della stessa camera ma di risoluzione diversa
+    (per esempio 1280x720 invece di 1920x1080): cambia solo la scala dei pixel, quindi
+    si scalano focale e centro dell'immagine. Posizione e orientamento restano uguali.
+    Con proporzioni diverse (video verticale, 4:3) non si puo': serve una calibrazione propria.
+    """
+    w0, h0 = cal["dimensioni"]
+    if (w0, h0) == (larghezza, altezza):
+        return cal
+    if abs(larghezza / altezza - w0 / h0) > 0.02:
+        raise SystemExit(f"Il video e' {larghezza}x{altezza}, la calibrazione e' per {w0}x{h0}: proporzioni "
+                         f"diverse. Serve una calibrazione per questo video (calibra_campo.py).")
+    s = larghezza / w0
+    K = np.array(cal["K"], float)
+    K[:2] *= s
+    return {**cal, "K": K.tolist(), "dimensioni": [larghezza, altezza], "focale_px": round(float(K[0, 0]), 1)}
+
+
+def carica_per_video(video, calibrazione=None):
+    """
+    Calibrazione da usare per un video:
+      - quella indicata (calibrazione), se c'e';
+      - altrimenti quella del video, calibrazioni/<video>.json, se esiste;
+      - altrimenti quella standard, calibrazioni/standard.json (telefono messo come
+        con SwingVision: vedi LEGGIMI.md, "Calibrazione standard").
+    Restituisce (calibrazione adattata alla risoluzione del video, "video" o "standard").
+    """
+    nome = os.path.splitext(os.path.basename(video))[0]
+    if calibrazione:
+        if not os.path.exists(calibrazione):
+            raise SystemExit(f"Calibrazione non trovata: {calibrazione}")
+        percorso = calibrazione
+    else:
+        percorso = os.path.join(CARTELLA_CALIBRAZIONI, nome + ".json")
+        if not os.path.exists(percorso):
+            percorso = STANDARD
+    cal = json.load(open(percorso, encoding="utf-8"))
+    fonte = "standard" if cal.get("video") == "standard" else "video"
+    cap = cv2.VideoCapture(video)
+    w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+    return adatta_risoluzione(cal, w, h), fonte
+
+
 # ------------------------------------------------------------------ disegno
-def disegna_controllo(frame, cal, punti_px):
+def disegna_controllo(frame, cal, punti_px, testo=None):
     """Campo ridisegnato (verde), profilo della rete (giallo), punti cliccati (rosso) e riproiettati (blu)."""
     out = frame.copy()
     cam = camera_da_json(cal)
@@ -139,10 +191,14 @@ def disegna_controllo(frame, cal, punti_px):
         q = project(np.array(MONDO[n]), cam)[0]
         cv2.circle(out, (int(round(u)), int(round(v))), 6, ROSSO, 2, cv2.LINE_AA)
         cv2.circle(out, (int(round(q[0])), int(round(q[1]))), 3, BLU, -1, cv2.LINE_AA)
-    testo = (f"errore medio {cal['errore_rms_px']:.1f} px  |  camera a x={cal['camera_in_metri'][0]} "
-             f"y={cal['camera_in_metri'][1]} z={cal['camera_in_metri'][2]} m  |  focale {cal['focale_px']} px")
-    cv2.rectangle(out, (0, 0), (out.shape[1], 40), (0, 0, 0), -1)
-    cv2.putText(out, testo, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
+    if testo is None:
+        testo = (f"errore medio {cal['errore_rms_px']:.1f} px  |  camera a x={cal['camera_in_metri'][0]} "
+                 f"y={cal['camera_in_metri'][1]} z={cal['camera_in_metri'][2]} m  |  focale {cal['focale_px']} px")
+    s = max(0.8, out.shape[1] / 2400)                 # scritta leggibile anche in 4K
+    alto = int(40 * s)
+    cv2.rectangle(out, (0, 0), (out.shape[1], alto), (0, 0, 0), -1)
+    cv2.putText(out, testo, (12, int(28 * s)), cv2.FONT_HERSHEY_SIMPLEX, 0.8 * s, (255, 255, 255),
+                max(2, int(2 * s)), cv2.LINE_AA)
     return out
 
 

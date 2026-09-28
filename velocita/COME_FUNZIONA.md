@@ -218,6 +218,18 @@ Risultato con 18 punti: camera a x 5,58, y −13,62, altezza 3,18 m, focale 7181
 
 Controllo di buon senso: Djokovic, alto 1,88 m e a circa 12 m dalla camera, con questa focale dovrebbe apparire alto circa 1,88 × 7181 / 12 ≈ 1125 pixel. Nel video il suo riquadro è alto circa 1090 pixel.
 
+### 5.4 La calibrazione standard: una per tutti i video
+
+Calibrare ogni video non scala. Per questo facciamo come SwingVision: il telefono va messo sempre nello stesso modo (in orizzontale, zoom 1x, centrato dietro il fondo, in alto sulla recinzione) e si usa sempre la stessa calibrazione. È `calibrazioni/standard.json`, cioè la calibrazione del video di Nicola (§5.2), registrato proprio con SwingVision.
+
+Tre cose fanno funzionare questa scelta:
+
+- **Risoluzione diversa.** Se il video è 720p o 4K invece di 1080p, cambia solo la scala dei pixel. Si scalano focale e centro dell'immagine (`adatta_risoluzione` in `calibra_campo.py`), mentre posizione e orientamento della camera restano gli stessi. Con proporzioni diverse, per esempio un video verticale, non si può, e il programma chiede una calibrazione propria.
+- **Quanto deve essere precisa la posizione.** Ho simulato colpi visti da una camera spostata rispetto allo standard e ricostruiti con la calibrazione standard. Spostare la camera avanti o indietro di 1,5 m cambia la velocità di meno di 1 km/h: si sposta tutta la scena, ma la forma della traiettoria resta. Contano invece l'altezza (1 m più in alto: fino a −8 km/h), lo zoom (focale +15%: −7/−10 km/h) e il centramento (1 m di lato: +3° sulla direzione). Rispettando zoom 1x, centro e altezza simile, l'errore resta dentro il margine di ±20 km/h. La tabella completa è in `LEGGIMI.md`.
+- **Controllo a colpo d'occhio.** `velocita_uscita.py` disegna ogni volta il campo della calibrazione usata sul primo fotogramma del video (`outputs/dati/<video>_campo.jpg`). Se le righe verdi non cadono su quelle vere, il telefono era messo diversamente e quel video ha bisogno della sua calibrazione. Sul video di Djokovic, con la calibrazione standard, la rete disegnata cade circa a metà del campo vicino: l'errore si vede subito.
+
+Se un video ha la sua calibrazione (`calibrazioni/<video>.json`), si usa quella. Per questo i video di Nicola e di Djokovic continuano a dare gli stessi risultati.
+
 ---
 
 ## 6. Il rilevatore locale della pallina: come l'ho fatto

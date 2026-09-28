@@ -7,8 +7,12 @@ direzione del colpo (lungo linea / incrociato / centrale).
 
 Legge dalla cartella outputs/dati il <video>_tracking.csv (analyze.py) e il
 <video>_colpi.csv (classifica_tracking.py), e la calibrazione del campo
-velocita/calibrazioni/<video>.json (calibra_campo.py). Scrive
-outputs/dati/<video>_velocita.csv, un colpo per riga.
+velocita/calibrazioni/<video>.json (calibra_campo.py); se il video non ce
+l'ha, usa quella standard, velocita/calibrazioni/standard.json (telefono messo
+come con SwingVision, vedi LEGGIMI.md). Scrive outputs/dati/<video>_velocita.csv,
+un colpo per riga, e outputs/dati/<video>_campo.jpg: il campo della
+calibrazione usata disegnato sul primo fotogramma, per controllare a colpo
+d'occhio che la camera fosse messa bene.
 
 Passi:
 
@@ -46,12 +50,13 @@ import os
 import sys
 from collections import Counter
 
+import cv2
 import numpy as np
 
 QUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, QUI)
 from rf_ball_exit_speed import exit_speed, ground_from_pixel  # noqa: E402
-from calibra_campo import camera_da_json  # noqa: E402
+from calibra_campo import camera_da_json, carica_per_video, disegna_controllo, leggi_fotogramma  # noqa: E402
 import palla_locale  # noqa: E402
 
 CENTRO_X = 5.485            # riga centrale del campo (m)
@@ -231,11 +236,18 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     nome = os.path.splitext(os.path.basename(video))[0]
     t = leggi_tracking(os.path.join(cartella_dati, nome + "_tracking.csv"))
     classi = leggi_colpi(os.path.join(cartella_dati, nome + "_colpi.csv"))
-    pcal = calibrazione or os.path.join(QUI, "calibrazioni", nome + ".json")
-    if not os.path.exists(pcal):
-        raise SystemExit(f"Manca la calibrazione del campo: {pcal}\n"
-                         f"Falla con: python velocita/calibra_campo.py {video}")
-    cam = camera_da_json(json.load(open(pcal, encoding="utf-8")))
+    cal, fonte = carica_per_video(video, calibrazione)
+    cam = camera_da_json(cal)
+    # controllo: il campo della calibrazione usata sopra il primo fotogramma
+    frame, _, _ = leggi_fotogramma(video, 0)
+    if fonte == "standard":
+        testo = "calibrazione STANDARD: le righe verdi devono cadere su quelle vere"
+    else:
+        testo = f"calibrazione del video (errore medio {cal['errore_rms_px']:.1f} px)"
+    controllo = os.path.join(cartella_dati, nome + "_campo.jpg")
+    cv2.imwrite(controllo, disegna_controllo(frame, cal, {}, testo))
+    if verbose:
+        print(f"Calibrazione: {'standard' if fonte == 'standard' else 'del video'}. Controllo: {controllo}")
 
     n = len(t["frame"])
     tracknet = {int(f): tuple(p) for f, p, v in zip(t["frame"], t["palla"], t["vista"]) if v}
@@ -252,7 +264,8 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         for fc in contatti:
             voti = [classi[f] for f in range(fc - 15, fc + 1) if classi.get(f) not in (None, "attesa")]
             colpo = Counter(voti).most_common(1)[0][0] if voti else ""
-            riga = {"frame": fc, "tempo_s": round(float(t["tempo"][fc - 1]), 3), "colpo": colpo}
+            riga = {"frame": fc, "tempo_s": round(float(t["tempo"][fc - 1]), 3), "colpo": colpo,
+                    "calibrazione": fonte}
             try:
                 r, piedi, angolo, x_arr, direzione, usati = misura(t, traccia, fc, cam)
                 riga.update({
@@ -276,12 +289,13 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             colpo = tratti.most_common(1)[0][0]
             fine = fine_tratto_piu_lungo(classi, a, b, colpo)
             colpi.append({"frame": fine, "tempo_s": round(float(t["tempo"][fine - 1]), 3), "colpo": colpo,
-                          "nota": "contatto non visibile: pallina coperta o persa"})
+                          "calibrazione": fonte, "nota": "contatto non visibile: pallina coperta o persa"})
     return nome, colpi
 
 
 CAMPI = ["frame", "tempo_s", "colpo", "velocita_uscita_kmh", "direzione", "angolo_gradi", "giocatore_x_m",
-         "arrivo_x_m", "contatto_x_m", "contatto_y_m", "contatto_z_m", "punti_usati", "errore_px", "nota"]
+         "arrivo_x_m", "contatto_x_m", "contatto_y_m", "contatto_z_m", "punti_usati", "errore_px",
+         "calibrazione", "nota"]
 
 
 def main():

@@ -1,0 +1,44 @@
+{
+ "video": "standard",
+ "nota": "Calibrazione standard, usata per i video che non hanno una calibrazione propria. Viene dal video nicola_matarese_trim, registrato con SwingVision: telefono centrato dietro il fondo, circa 6,7 m dietro e 2,2 m di altezza, focale compatibile con lo zoom 1x (circa 68 gradi di campo orizzontale). Vale per i video girati nello stesso modo.",
+ "origine": "nicola_matarese_trim",
+ "dimensioni": [
+  1920,
+  1080
+ ],
+ "data": "2026-09-25",
+ "K": [
+  [
+   1418.749325432089,
+   0.0,
+   960.0
+  ],
+  [
+   0.0,
+   1418.749325432089,
+   540.0
+  ],
+  [
+   0.0,
+   0.0,
+   1.0
+  ]
+ ],
+ "rvec": [
+  1.5104513399475186,
+  0.08055290533754282,
+  -0.06541153000626053
+ ],
+ "tvec": [
+  -4.84470835230397,
+  2.5215665922953105,
+  7.009083019689882
+ ],
+ "errore_rms_px": 2.5818868234033676,
+ "camera_in_metri": [
+  5.46,
+  -6.66,
+  2.17
+ ],
+ "focale_px": 1418.7
+}

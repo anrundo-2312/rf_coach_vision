@@ -106,7 +106,8 @@ def main():
                 righe = [c["colpo"].upper(), f"uscita {c['velocita_uscita_kmh']} km/h"]
                 if c.get("direzione"):
                     righe.append(c["direzione"])
-                righe.append("margine circa +-20 km/h")
+                righe.append("margine circa +-20 km/h" +
+                             (" - calibrazione standard" if c.get("calibrazione") == "standard" else ""))
                 etichetta(fr, righe, colore)
                 if c.get("direzione"):
                     mappa(fr, c)

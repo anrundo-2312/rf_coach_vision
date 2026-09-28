@@ -25,17 +25,63 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
   rotazione) sui frame dopo l'impatto, velocita' di uscita. Due parametri
   aggiunti per noi: `forward` e `depth_tol`.
 - `calibra_campo.py` - la calibrazione: si cliccano i punti del campo visibili
-  su un fotogramma.
+  su un fotogramma. Serve solo per i video girati con la camera in una
+  posizione diversa da quella standard (vedi sotto).
 - `palla_locale.py` - rilevatore della pallina per colore, attorno al
   giocatore, dove TrackNet la perde.
 - `velocita_uscita.py` - il programma principale: trova i colpi e calcola
   velocita' e direzione.
 - `disegna_velocita.py` - riscrive il video con colpo, km/h, direzione e una
   piccola mappa del campo.
-- `calibrazioni/` - una calibrazione per video: `<video>.json` e
-  `<video>_campo.jpg`, l'immagine di controllo (resta sul PC). Il JSON viene
-  copiato anche su Drive in `rf_coach_vision/calibrazioni/`, da dove lo prende
-  Colab.
+- `calibrazioni/` - `standard.json`, la calibrazione standard, e quelle dei
+  singoli video: `<video>.json` e `<video>_campo.jpg`, l'immagine di
+  controllo (resta sul PC). Il JSON di un video viene copiato anche su Drive
+  in `rf_coach_vision/calibrazioni/`, da dove lo prende Colab.
+
+## Calibrazione standard (come SwingVision)
+
+Per passare dai pixel ai metri serve sapere dov'e' la camera rispetto al
+campo (la calibrazione). Invece di calibrare ogni video, come fa SwingVision
+si mette il telefono sempre nello stesso modo e si usa sempre la stessa
+calibrazione: `calibrazioni/standard.json`. Viene dal video di Nicola,
+registrato con SwingVision: camera centrata, 6,7 m dietro il fondo, 2,2 m di
+altezza, focale da zoom 1x (circa 68 gradi di campo orizzontale).
+
+Come mettere il telefono:
+- in orizzontale, zoom 1x (non 0,5x ne' 2x);
+- dietro il fondo, centrato sulla riga centrale;
+- in alto, sulla recinzione, all'incirca all'altezza standard;
+- con il campo intero inquadrato, e fermo per tutta la registrazione.
+
+`velocita_uscita.py` usa la calibrazione del video se c'e'
+(`calibrazioni/<video>.json`), altrimenti quella standard, adattata alla
+risoluzione del video (720p, 1080p, 4K: basta che sia 16:9). Nel CSV la
+colonna `calibrazione` dice quale ha usato, e sul video compare
+"calibrazione standard".
+
+**Controllo.** Ogni volta viene scritto `outputs/dati/<video>_campo.jpg`: il
+primo fotogramma con il campo della calibrazione disegnato in verde (su Colab
+compare sotto la cella 7b). Se le righe verdi cadono su quelle vere il
+telefono era messo bene; se no, le velocita' di quel video non sono
+affidabili e serve una calibrazione propria (`calibra_campo.py`).
+
+Quanto conta mettere il telefono esattamente come lo standard (simulazione:
+calibrazione standard, camera vera spostata, un servizio a 90 km/h e un
+dritto a 65 km/h, senza rumore):
+
+| Camera vera rispetto allo standard | Servizio | Dritto | Angolo della direzione |
+|---|---|---|---|
+| 1,5 m piu' indietro o piu' avanti | meno di 1 km/h | meno di 1 km/h | 0 gradi |
+| 1 m piu' in alto | -2 km/h | -8 km/h | 0 gradi |
+| 1 m di lato | 0 | 0 | +3 gradi |
+| telefono con zoom diverso (+15% di focale) | -10 km/h | -7 km/h | -1 grado |
+
+La distanza dal fondo conta pochissimo; contano zoom 1x, camera centrata e
+altezza simile. Rispettando questi tre punti l'errore resta dentro il
+margine di +-20 km/h mostrato sul video.
+
+I video girati in un altro modo (per esempio il video di Djokovic: camera
+13,6 m dietro e molto zoomata) hanno bisogno della loro calibrazione.
 
 ## Come si usa
 
@@ -43,9 +89,12 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
 
 Nel notebook `colab/rf_coach_colab.ipynb` le celle 6 (analisi) e 7 (colpi)
 come sempre, poi la 7b (velocita' e direzione), la 8 (salvataggio su Drive) e
-la 9 (anteprima). L'unico passo da fare sul PC e' la calibrazione del campo,
-che e' interattiva ma leggera (apre un solo fotogramma): si puo' fare mentre
-Colab fa l'analisi, anche con il video solo su Drive:
+la 9 (anteprima). Se il telefono era messo nella posizione standard non serve
+altro: la 7b usa la calibrazione standard e mostra l'immagine di controllo.
+
+Solo se l'immagine di controllo non torna, o per i video girati in un altro
+modo, serve la calibrazione del video, sul PC (e' interattiva ma leggera: apre
+un solo fotogramma, anche con il video solo su Drive):
 
 ```
 python velocita/calibra_campo.py "G:/Il mio Drive/rf_coach_vision/inputs/<video>.mp4"
@@ -63,7 +112,8 @@ python analyze.py inputs/<video>.mp4
 python classificazione/classifica_tracking.py --tracking outputs/dati/<video>_tracking.csv
 ```
 
-Poi, una volta per ogni posizione della camera, la calibrazione del campo:
+Poi, solo se la camera non era nella posizione standard, la calibrazione del
+campo (una volta per ogni posizione della camera):
 
 ```
 python velocita/calibra_campo.py inputs/<video>.mp4
@@ -76,10 +126,11 @@ python velocita/velocita_uscita.py --video inputs/<video>.mp4
 python velocita/disegna_velocita.py --video inputs/<video>.mp4
 ```
 
-Risultati: `outputs/dati/<video>_velocita.csv` (un colpo per riga) e
+Risultati: `outputs/dati/<video>_velocita.csv` (un colpo per riga),
+`outputs/dati/<video>_campo.jpg` (controllo della calibrazione) e
 `outputs/video/<video>_velocita.mp4`.
 
-### Calibrazione del campo
+### Calibrazione del campo di un video
 
 Si apre un fotogramma: in alto c'e' scritto quale punto cliccare, lo schema
 in basso a sinistra mostra dov'e' sul campo, la lente in alto ingrandisce
@@ -171,9 +222,12 @@ Solo 3 colpi misurati: le soglie vanno verificate su altri video.
 
 - Colpi in cui la pallina passa dietro il corpo del giocatore subito dopo il
   contatto: niente velocita' ne' direzione.
-- La calibrazione va fatta per ogni posizione della camera.
+- La calibrazione standard vale solo con il telefono messo nella posizione
+  standard; per gli altri video va fatta la calibrazione del video.
 - Il rilevatore di colore puo' confondersi con oggetti dello stesso colore
   (magliette lime, scritte).
-- Da fare: direzione del servizio (al T / al corpo / esterno), rilevamento
-  del rimbalzo come vincolo, dimensione apparente della pallina come misura
-  di distanza, audio, rotazione nel modello, fine-tuning di TrackNet.
+- Da fare: avviso automatico quando le righe del campo non coincidono con la
+  calibrazione standard, direzione del servizio (al T / al corpo / esterno),
+  rilevamento del rimbalzo come vincolo, dimensione apparente della pallina
+  come misura di distanza, audio, rotazione nel modello, fine-tuning di
+  TrackNet.
