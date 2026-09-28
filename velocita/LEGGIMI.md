@@ -193,7 +193,14 @@ salvata, senza finestre (anche su Colab).
    - *centrale*: arriva entro 1 m dalla riga centrale;
    - *dal centro verso destra/sinistra*: parte dal centro (entro 1 m) e va
      verso un lato.
-   Per il servizio la direzione non viene classificata.
+   Per il servizio invece: *al T*, *al corpo* o *esterno*, secondo dove cade
+   il rimbalzo previsto nel riquadro del servizio opposto (diviso in tre
+   fasce uguali da 1,37 m, dalla riga centrale a quella del singolo). Entro
+   25 cm dal confine con la fascia accanto si aggiunge verso quale fascia
+   (es. "al corpo, verso il T"). Conta solo la posizione laterale del
+   rimbalzo, che e' precisa; la profondita' no (vedi sotto), quindi non
+   diciamo se il servizio e' lungo. Nel CSV ci sono `rimbalzo_x_m` e
+   `rimbalzo_y_m`.
 6. Se la posa indica un colpo, la pallina arriva al giocatore ma il contatto
    non si vede (pallina coperta dal corpo), il colpo viene scritto lo stesso,
    senza velocita', con una nota.
@@ -209,6 +216,8 @@ dopo l'impatto, colpi amatoriali da 65-90 km/h):
 |---|---|---|
 | velocita' | +-12-20 km/h | +-23-31 km/h |
 | angolo della direzione | +-1 grado | +-2-3 gradi |
+| rimbalzo del servizio, di lato | +-0,1-0,4 m | +-0,1-0,5 m |
+| rimbalzo del servizio, in profondita' | +-2 m | +-3 m |
 
 Sui video veri l'errore della pallina e' 1-4 px. La direzione e' quindi molto
 piu' affidabile della velocita' (un incrociato fa 15-20 gradi, un lungo linea
@@ -220,7 +229,7 @@ con il suo margine.
 
 | Video | Colpo | Contatto | Uscita | Direzione |
 |---|---|---|---|---|
-| nicola_matarese_trim | servizio | frame 15 | 116 km/h | - |
+| nicola_matarese_trim | servizio | frame 15 | 116 km/h | al corpo, verso il T |
 | nicola_matarese_trim | rovescio | frame 223 | non disponibile (pallina coperta) | - |
 | zverev_djokovic_trim_swin_like | dritto | frame 65 | 123 km/h | centrale |
 | zverev_djokovic_trim_swin_like | rovescio | frame 217 | 114 km/h | centrale |
@@ -228,7 +237,10 @@ con il suo margine.
 Il video di Nicola e' registrato con SwingVision, che per il servizio indica
 83 km/h: pero' SwingVision mostra la velocita' MEDIA del volo, non quella di
 uscita (la nostra media fino al rimbalzo e' ~90-98 km/h), e il rimbalzo che
-calcoliamo cade quasi dove lo mette la sua mappa.
+calcoliamo cade quasi dove lo mette la sua mappa. Con il programma automatico
+(20 frame) il rimbalzo esce a 3,96 m di larghezza contro 4,2 m di SwingVision:
+lui e' al T vicino al confine, noi al corpo vicino al confine, da qui "al
+corpo, verso il T". In profondita' la differenza e' di 2,3 m, come previsto.
 
 Solo 3 colpi misurati: le soglie vanno verificate su altri video.
 
@@ -240,8 +252,9 @@ Solo 3 colpi misurati: le soglie vanno verificate su altri video.
   standard; per gli altri video va fatta la calibrazione del video.
 - Il rilevatore di colore puo' confondersi con oggetti dello stesso colore
   (magliette lime, scritte).
+- Il servizio in slice o in kick curva di lato: la rotazione non e' nel
+  modello, quindi il rimbalzo vero puo' spostarsi rispetto a quello previsto.
 - Da fare: avviso automatico quando le righe del campo non coincidono con la
-  calibrazione standard, direzione del servizio (al T / al corpo / esterno),
-  rilevamento del rimbalzo come vincolo, dimensione apparente della pallina
-  come misura di distanza, audio, rotazione nel modello, fine-tuning di
-  TrackNet.
+  calibrazione standard, rilevamento del rimbalzo come vincolo, dimensione
+  apparente della pallina come misura di distanza, audio, rotazione nel
+  modello, fine-tuning di TrackNet.

@@ -53,15 +53,33 @@ def mappa(fr, colpo):
                  ((1.37, 5.485), (9.60, 5.485)), ((1.37, 18.285), (9.60, 18.285)), ((5.485, 5.485), (5.485, 18.285))]:
         cv2.line(img, px(*a), px(*b), bianco, 1, cv2.LINE_AA)
     cv2.line(img, px(-0.9, 11.885), px(11.9, 11.885), (0, 200, 255), 2)
-    # fascia "centrale" nel campo avversario
-    ov = img.copy()
-    cv2.rectangle(ov, px(5.485 - 1.0, 23.77), px(5.485 + 1.0, 11.885), (120, 120, 120), -1)
-    img = cv2.addWeighted(ov, 0.35, img, 0.65, 0)
+    servizio = colpo["colpo"] == "servizio" and "rimbalzo_x_m" in colpo
+    if servizio:
+        # riquadro del servizio diviso in tre: al T, al corpo, esterno
+        terzo = (5.485 - 1.37) / 3
+        for k in (1, 2):
+            for x in (5.485 - k * terzo, 5.485 + k * terzo):
+                cv2.line(img, px(x, 11.885), px(x, 18.285), (150, 150, 150), 1, cv2.LINE_AA)
+        xa, ya = colpo["rimbalzo_x_m"], colpo["rimbalzo_y_m"]
+        # evidenzia la fascia colpita (conta la posizione laterale; la profondita' e' imprecisa)
+        verso = -1 if colpo["giocatore_x_m"] >= 5.485 else 1
+        k = min(2, max(0, int((xa - 5.485) * verso // terzo)))
+        xa0, xa1 = 5.485 + verso * k * terzo, 5.485 + verso * (k + 1) * terzo
+        ov = img.copy()
+        cv2.rectangle(ov, px(min(xa0, xa1), 18.285), px(max(xa0, xa1), 11.885), (0, 200, 255), -1)
+        img = cv2.addWeighted(ov, 0.3, img, 0.7, 0)
+    else:
+        # fascia "centrale" nel campo avversario
+        ov = img.copy()
+        cv2.rectangle(ov, px(5.485 - 1.0, 23.77), px(5.485 + 1.0, 11.885), (120, 120, 120), -1)
+        img = cv2.addWeighted(ov, 0.35, img, 0.65, 0)
+        xa, ya = colpo["arrivo_x_m"], 21.0
     xs, ys = colpo["contatto_x_m"], colpo["contatto_y_m"]
-    xa, ya = colpo["arrivo_x_m"], 21.0
     col = COLORI.get(colpo["colpo"], (255, 255, 255))
     cv2.circle(img, px(xs, ys), 5, col, -1, cv2.LINE_AA)
     cv2.arrowedLine(img, px(xs, ys), px(xa, ya), col, 2, cv2.LINE_AA, tipLength=0.08)
+    if servizio:
+        cv2.circle(img, px(xa, ya), 4, (255, 255, 255), -1, cv2.LINE_AA)     # rimbalzo previsto
     H, W = fr.shape[:2]
     s = H / 1080
     img = cv2.resize(img, None, fx=s, fy=s)

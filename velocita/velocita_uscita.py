@@ -37,6 +37,8 @@ Passi:
 
 5. LUNGO LINEA / INCROCIATO / CENTRALE, dalla posizione del giocatore e da
    dove arriverebbe la pallina nel campo avversario (vedi classifica_direzione).
+   Per il servizio invece AL T / AL CORPO / ESTERNO, da dove cade il rimbalzo
+   previsto nel riquadro del servizio (vedi classifica_servizio).
 
 Se in una finestra la posa indica un colpo ma il contatto non si trova (per
 esempio la pallina passa dietro il corpo del giocatore), il colpo viene
@@ -55,7 +57,7 @@ import numpy as np
 
 QUI = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, QUI)
-from rf_ball_exit_speed import exit_speed, ground_from_pixel  # noqa: E402
+from rf_ball_exit_speed import exit_speed, ground_crossing, ground_from_pixel  # noqa: E402
 from calibra_campo import camera_da_json, carica_per_video, disegna_controllo, leggi_fotogramma  # noqa: E402
 import palla_locale  # noqa: E402
 
@@ -80,6 +82,10 @@ TOLLERANZA_PROFONDITA = 1.0 # contatto entro 1 m dalla distanza del giocatore
 # Direzione
 Y_ARRIVO = 21.0             # dove "arriva" la pallina: tra riga del servizio e fondo lontani (m)
 FASCIA_CENTRO = 1.0         # +- metri attorno alla riga centrale considerati "centro"
+# Servizio: il riquadro (dalla riga centrale a quella del singolo, 4,115 m) diviso in
+# tre fasce uguali: al T (vicino alla riga centrale), al corpo, esterno.
+TERZO_RIQUADRO = (CENTRO_X - 1.37) / 3
+MARGINE_CONFINE = 0.25      # entro 0,25 m dal confine tra due fasce si dice anche verso quale
 
 
 # ------------------------------------------------------------------ lettura
@@ -191,6 +197,25 @@ def classifica_direzione(x_giocatore, contatto, v0):
     return angolo, float(x_arrivo), classe
 
 
+def classifica_servizio(x_giocatore, rimbalzo):
+    """
+    Al T / al corpo / esterno, da dove cade il rimbalzo previsto. Il servizio va
+    in diagonale: da destra nel riquadro di sinistra e viceversa, quindi si misura
+    la distanza del rimbalzo dalla riga centrale verso l'esterno di quel riquadro.
+    Conta solo la posizione laterale: e' precisa (simulazioni: +-0,1-0,5 m), la
+    profondita' del rimbalzo no (+-2-3 m), quindi non diciamo se e' lungo.
+    """
+    verso_esterno = -1 if x_giocatore >= CENTRO_X else 1
+    dal_centro = (rimbalzo[0] - CENTRO_X) * verso_esterno
+    fascia = 0 if dal_centro < TERZO_RIQUADRO else 1 if dal_centro < 2 * TERZO_RIQUADRO else 2
+    nomi, verso = ["al T", "al corpo", "esterno"], ["verso il T", "verso il corpo", "verso l'esterno"]
+    # vicino al confine con la fascia accanto: la precisione e' di qualche decimetro
+    for confine, vicina in ((fascia * TERZO_RIQUADRO, fascia - 1), ((fascia + 1) * TERZO_RIQUADRO, fascia + 1)):
+        if 0 <= vicina <= 2 and abs(dal_centro - confine) < MARGINE_CONFINE:
+            return f"{nomi[fascia]}, {verso[vicina]}"
+    return nomi[fascia]
+
+
 def misura(t, traccia, f_contatto, cam):
     fps = t["fps"]
     n_dopo = max(4, int(round(DURATA_DOPO_S * fps)))
@@ -203,8 +228,10 @@ def misura(t, traccia, f_contatto, cam):
                    player_ground_xy=piedi, return_debug=True, forward=True,
                    depth_tol=TOLLERANZA_PROFONDITA)
     angolo, x_arrivo, direzione = classifica_direzione(piedi[0], r["impact_xyz_m"], r["v0_ms"])
+    # rimbalzo previsto (gravita' + aria, senza rotazione): usato solo per il servizio
+    _, rimbalzo = ground_crossing(r["impact_xyz_m"], r["v0_ms"])
     usati = [f for f in fs if f_contatto < f <= f_contatto + n_dopo]
-    return r, piedi, angolo, x_arrivo, direzione, usati
+    return r, piedi, angolo, x_arrivo, direzione, rimbalzo, usati
 
 
 def pallina_vicina(traccia, t):
@@ -267,10 +294,14 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             riga = {"frame": fc, "tempo_s": round(float(t["tempo"][fc - 1]), 3), "colpo": colpo,
                     "calibrazione": fonte}
             try:
-                r, piedi, angolo, x_arr, direzione, usati = misura(t, traccia, fc, cam)
+                r, piedi, angolo, x_arr, direzione, rimbalzo, usati = misura(t, traccia, fc, cam)
+                if colpo == "servizio":
+                    direzione = classifica_servizio(float(piedi[0]), rimbalzo)
+                    riga.update({"rimbalzo_x_m": round(float(rimbalzo[0]), 2),
+                                 "rimbalzo_y_m": round(float(rimbalzo[1]), 2)})
                 riga.update({
                     "velocita_uscita_kmh": round(r["exit_kmh"]),
-                    "direzione": "" if colpo == "servizio" else direzione,
+                    "direzione": direzione,
                     "angolo_gradi": round(angolo, 1),
                     "giocatore_x_m": round(float(piedi[0]), 2), "arrivo_x_m": round(x_arr, 2),
                     "contatto_x_m": round(float(r["impact_xyz_m"][0]), 2),
@@ -294,8 +325,8 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
 
 
 CAMPI = ["frame", "tempo_s", "colpo", "velocita_uscita_kmh", "direzione", "angolo_gradi", "giocatore_x_m",
-         "arrivo_x_m", "contatto_x_m", "contatto_y_m", "contatto_z_m", "punti_usati", "errore_px",
-         "calibrazione", "nota"]
+         "arrivo_x_m", "rimbalzo_x_m", "rimbalzo_y_m", "contatto_x_m", "contatto_y_m", "contatto_z_m",
+         "punti_usati", "errore_px", "calibrazione", "nota"]
 
 
 def main():
@@ -313,8 +344,10 @@ def main():
     print()
     for c in colpi:
         if c.get("velocita_uscita_kmh", "") != "":
+            dove = (f"rimbalzo ({c['rimbalzo_x_m']:.1f}; {c['rimbalzo_y_m']:.1f}) m" if "rimbalzo_x_m" in c
+                    else f"arrivo x {c['arrivo_x_m']:.1f} m")
             print(f"  frame {c['frame']:4d} {c['tempo_s']:5.2f} s  {c['colpo']:9s} {c['velocita_uscita_kmh']:4d} km/h  "
-                  f"{c['direzione'] or '-':24s} angolo {c['angolo_gradi']:+5.1f}  giocatore x {c['giocatore_x_m']:.1f} m -> arrivo x {c['arrivo_x_m']:.1f} m")
+                  f"{c['direzione'] or '-':24s} angolo {c['angolo_gradi']:+5.1f}  giocatore x {c['giocatore_x_m']:.1f} m -> {dove}")
         else:
             print(f"  frame {c['frame']:4d} {c['tempo_s']:5.2f} s  {c['colpo']:9s}  -   {c['nota']}")
     print(f"\nSalvato in {uscita}")

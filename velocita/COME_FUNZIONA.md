@@ -330,18 +330,24 @@ I passaggi che nelle prime prove facevo a mano ora li fa `velocita/velocita_usci
    - centrale: arriva entro 1 m dalla riga centrale;
    - dal centro verso destra o sinistra: parte dal centro e va verso un lato.
 
-   Ragionare su dove arriva la pallina, invece che solo sui gradi, evita di chiamare "lungo linea" un colpo dritto tirato dal centro del campo. Per il servizio la direzione non viene classificata.
+   Ragionare su dove arriva la pallina, invece che solo sui gradi, evita di chiamare "lungo linea" un colpo dritto tirato dal centro del campo.
+
+   **Servizio: al T, al corpo, esterno.** Per il servizio conta dove rimbalza la pallina nel riquadro del servizio. Dalla traiettoria stimata (punto di contatto e velocità 3D) si calcola il rimbalzo con `ground_crossing` del file del tuo amico, cioè con gravità e resistenza dell'aria. Il servizio va in diagonale, quindi si guarda il riquadro opposto al lato da cui serve il giocatore. Quel riquadro, dalla riga centrale a quella del singolo (4,115 m), è diviso in tre fasce uguali da 1,37 m: al T vicino alla riga centrale, al corpo, esterno. Se il rimbalzo cade entro 25 cm dal confine con la fascia accanto, si scrive anche verso quale fascia, per esempio "al corpo, verso il T".
+
+   Simulazioni (servizio da destra, camera standard, 60 fps, 20 frame, rimbalzi veri al T, al corpo ed esterno): la posizione LATERALE del rimbalzo esce entro ±0,1–0,4 m nel 90% dei casi con TrackNet preciso (2 px) ed entro ±0,1–0,5 m con 4 px. La PROFONDITÀ invece è imprecisa, ±2–3 m, perché la pallina si allontana lungo la linea di vista. Per questo la classificazione usa solo la posizione laterale e non dice se il servizio è lungo. La rotazione non è nel modello: un servizio in slice curva di lato e può spostare il rimbalzo vero rispetto a quello calcolato.
 7. **Colpi senza misura.** Se la posa indica un colpo e la pallina arriva al giocatore, ma il contatto non si vede, il colpo viene scritto lo stesso, senza velocità.
 
-`velocita/disegna_velocita.py` riscrive il video originale con tipo di colpo, km/h, direzione e una piccola mappa del campo vista dall'alto: punto di contatto, freccia della direzione e fascia centrale in grigio.
+`velocita/disegna_velocita.py` riscrive il video originale con tipo di colpo, km/h, direzione e una piccola mappa del campo vista dall'alto: punto di contatto, freccia della direzione e fascia centrale in grigio. Per il servizio la mappa mostra il riquadro diviso in tre fasce, con la fascia colpita evidenziata, e la freccia che arriva al rimbalzo previsto.
 
 Risultati senza nessun intervento a mano:
 
 | Video | Colpo | Contatto | Uscita | Direzione |
 |---|---|---|---|---|
-| Nicola | servizio | frame 15 | 116 km/h | (non classificata) |
+| Nicola | servizio | frame 15 | 116 km/h | al corpo, verso il T (rimbalzo previsto x 3,96 m) |
 | Nicola | rovescio | frame 223 | non disponibile | pallina coperta dal giocatore |
 | Djokovic | dritto | frame 65 | 123 km/h | centrale (−5,6°) |
 | Djokovic | rovescio | frame 217 | 114 km/h | centrale (−0,8°) |
 
 I frame di contatto coincidono con quelli verificati a occhio. Le velocità differiscono di 5–7 km/h dalle prove fatte a mano, per piccole differenze nei punti usati e nella posizione dei piedi: è dentro il margine di circa ±20 km/h. Le soglie sono state provate solo su questi due video e vanno verificate su altri.
+
+Confronto del servizio di Nicola con SwingVision: la sua mappa mette il rimbalzo a (4,2; 15,9) m, 1,28 m dalla riga centrale, cioè al T ma a 9 cm dal confine con il corpo. Noi lo mettiamo a 3,96 m, 1,52 m dalla riga centrale: al corpo, 15 cm oltre il confine, e per questo scriviamo "al corpo, verso il T". La differenza laterale è di 24 cm, dentro la precisione attesa. La profondità invece differisce di 2,3 m (18,2 contro 15,9), come previsto dalle simulazioni e forse anche per lo slice.
