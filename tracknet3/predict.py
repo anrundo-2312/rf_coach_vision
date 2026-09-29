@@ -2,11 +2,13 @@
 predict.py (vendorizzato da https://github.com/qaz812345/TrackNetV3,
 licenza MIT, commit del 2026-09-20).
 
-UNICA modifica rispetto all'originale: l'import da "test" (che tira
-dentro pycocotools, usato solo per la valutazione) e' sostituito con
-l'import dal modulo locale "infer_utils", che contiene le stesse 3
-funzioni copiate identiche. Tutta la logica di inferenza qui sotto
-(dataset, ensemble temporale, salvataggio CSV/video) e' invariata.
+Modifiche rispetto all'originale (la logica di inferenza - dataset,
+ensemble temporale, salvataggio CSV/video - e' invariata):
+- l'import da "test" (che tira dentro pycocotools, usato solo per la
+  valutazione) e' sostituito con l'import dal modulo locale "infer_utils",
+  che contiene le stesse 3 funzioni copiate identiche;
+- i frame vengono letti gia' rimpiccioliti (read_frames_resized, sotto),
+  e per i video lunghi ancora di piu', per non esaurire la RAM.
 
 Uso diretto (facoltativo, di solito viene chiamato da analyze.py):
     python predict.py --video_file <video> --tracknet_file ckpts/TrackNet_best.pt --save_dir pred_result
@@ -34,9 +36,22 @@ from utils.general import *
 # scala (img_scaler) viene calcolata dalle dimensioni del file, non dei frame.
 READ_MAX_WIDTH = 1280
 
+# Aggiunta rf_coach_vision (29/09/2026): con i video lunghi anche 1280 px sono
+# troppi. TrackNet tiene in memoria tutti i frame, piu' una copia e una terza
+# copia per l'immagine mediana dello sfondo: 1507 frame a 1280x720 sono circa
+# 3 x 4,2 GB = 12,5 GB, cioe' tutta la RAM di Colab (il processo veniva chiuso,
+# "^C"). Oltre LONG_VIDEO_FRAMES frame si leggono direttamente a 512 px, la
+# larghezza a cui TrackNet riduce comunque ogni frame: 1507 frame = ~0,7 GB.
+# I video piu' corti (tutti quelli provati finora: 263 e 320 frame) restano
+# esattamente come prima.
+LONG_VIDEO_FRAMES = 600
+LONG_VIDEO_MAX_WIDTH = 512
+
 
 def read_frames_resized(video_file, max_width=READ_MAX_WIDTH):
     cap = cv2.VideoCapture(video_file)
+    if int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) > LONG_VIDEO_FRAMES:
+        max_width = min(max_width, LONG_VIDEO_MAX_WIDTH)
     frames = []
     while True:
         ok, frame = cap.read()
