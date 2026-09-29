@@ -34,6 +34,9 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
   giocatore, dove TrackNet la perde.
 - `velocita_uscita.py` - il programma principale: trova i colpi e calcola
   velocita' e direzione.
+- `direzione_nascosta.py` - solo per i colpi in cui la pallina e' coperta dal
+  giocatore al contatto: prova a ricavare la direzione dal volo che si vede
+  dopo. Non tocca la velocita'.
 - `disegna_velocita.py` - riscrive il video con colpo, km/h, direzione e una
   piccola mappa del campo.
 - `calibrazioni/` - `standard.json`, la calibrazione standard, e quelle dei
@@ -133,6 +136,7 @@ E infine velocita', direzione e video:
 
 ```
 python velocita/velocita_uscita.py --video inputs/<video>.mp4
+python velocita/direzione_nascosta.py --video inputs/<video>.mp4
 python velocita/disegna_velocita.py --video inputs/<video>.mp4
 ```
 
@@ -207,6 +211,37 @@ salvata, senza finestre (anche su Colab).
 
 Tutte le soglie sono in cima al file.
 
+## Colpi con il contatto nascosto: solo la direzione
+
+`direzione_nascosta.py` si esegue dopo `velocita_uscita.py` e guarda solo i
+colpi del punto 6. La velocita' resta "non disponibile": senza i primi frame
+dopo il colpo dipende troppo dall'istante esatto del contatto (sul rovescio
+di Nicola da 50 a oltre 200 km/h spostandolo di pochi frame). La direzione
+invece si puo' ricavare dal volo che si vede dopo: vista dall'alto, la
+pallina va praticamente dritta, perche' gravita' e aria non la fanno girare
+di lato.
+
+1. La pallina in arrivo si perde a un certo frame; si cercano i punti di
+   TrackNet nei 0,75 s dopo e si tengono solo quelli su una stessa curva
+   liscia (gli altri sono falsi rilevamenti).
+2. Non sapendo quando e dove la racchetta ha colpito, si prova come contatto
+   ogni frame del tratto coperto, a ciascuno dei due polsi, con lo stesso
+   calcolo della traiettoria di `velocita_uscita.py` (il file
+   `rf_ball_exit_speed.py` non e' modificato).
+3. La direzione si scrive solo se tutti i calcoli che spiegano bene i punti
+   danno la stessa risposta, con angoli entro 6 gradi; altrimenti niente.
+
+Nel CSV la nota dice da quali frame viene e l'intervallo degli angoli; sul
+video compare "km/h non disponibile" con la direzione e la mappa.
+
+Prove: sul rovescio di Nicola (pallina persa al frame 208, ricompare al 237)
+esce "dal centro verso sinistra", angolo tra -4,7 e -0,4 gradi, arrivo a 3,7
+m dalla riga laterale sinistra; la mappa di SwingVision mette il rimbalzo di
+quel rovescio a circa 3,3 m. Sul video di Djokovic, cancellando la pallina
+attorno al contatto (6 prove, 13-29 frame), non ha mai dato una direzione
+sbagliata, ma non l'ha nemmeno mai data. Quindi: quando c'e' e' affidabile,
+ma spesso manca.
+
 ## Precisione da aspettarsi
 
 Dalle simulazioni (camera dietro al giocatore e rialzata, 60 fps, 20 frame
@@ -230,7 +265,7 @@ con il suo margine.
 | Video | Colpo | Contatto | Uscita | Direzione |
 |---|---|---|---|---|
 | nicola_matarese_trim | servizio | frame 15 | 116 km/h | al corpo, verso il T |
-| nicola_matarese_trim | rovescio | frame 223 | non disponibile (pallina coperta) | - |
+| nicola_matarese_trim | rovescio | frame 223 | non disponibile (pallina coperta) | dal centro verso sinistra (direzione_nascosta.py) |
 | zverev_djokovic_trim_swin_like | dritto | frame 65 | 123 km/h | centrale |
 | zverev_djokovic_trim_swin_like | rovescio | frame 217 | 114 km/h | centrale |
 
@@ -247,7 +282,8 @@ Solo 3 colpi misurati: le soglie vanno verificate su altri video.
 ## Limiti e prossimi passi
 
 - Colpi in cui la pallina passa dietro il corpo del giocatore subito dopo il
-  contatto: niente velocita' ne' direzione.
+  contatto: niente velocita'; la direzione solo se il calcolo e' stabile
+  (`direzione_nascosta.py`).
 - La calibrazione standard vale solo con il telefono messo nella posizione
   standard; per gli altri video va fatta la calibrazione del video.
 - Il rilevatore di colore puo' confondersi con oggetti dello stesso colore

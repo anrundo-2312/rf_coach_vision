@@ -337,6 +337,17 @@ I passaggi che nelle prime prove facevo a mano ora li fa `velocita/velocita_usci
    Simulazioni (servizio da destra, camera standard, 60 fps, 20 frame, rimbalzi veri al T, al corpo ed esterno): la posizione LATERALE del rimbalzo esce entro ±0,1–0,4 m nel 90% dei casi con TrackNet preciso (2 px) ed entro ±0,1–0,5 m con 4 px. La PROFONDITÀ invece è imprecisa, ±2–3 m, perché la pallina si allontana lungo la linea di vista. Per questo la classificazione usa solo la posizione laterale e non dice se il servizio è lungo. La rotazione non è nel modello: un servizio in slice curva di lato e può spostare il rimbalzo vero rispetto a quello calcolato.
 7. **Colpi senza misura.** Se la posa indica un colpo e la pallina arriva al giocatore, ma il contatto non si vede, il colpo viene scritto lo stesso, senza velocità.
 
+   Per questi colpi c'è un passo separato, `velocita/direzione_nascosta.py`, che prova a ricavare almeno la direzione senza toccare la velocità. È il caso del rovescio di Nicola: la pallina si vede in arrivo fino al frame 208, poi sparisce dietro il corpo e ricompare al 237, già lontana. Il contatto è nel buco, intorno al 223.
+
+   - **Perché la direzione sì e la velocità no.** Vista dall'alto, dopo il colpo la pallina va praticamente dritta: la gravità la tira giù e l'aria la rallenta, ma nessuna delle due la fa girare di lato. Basta quindi vedere un pezzo di volo dopo il buco, sapendo che parte vicino al giocatore. La velocità invece cala lungo il volo, e per risalire a quella di uscita serve l'istante esatto del contatto, che è proprio nel buco.
+   - **Punti dopo il buco.** I punti di TrackNet nei 0,75 s dopo il frame in cui la pallina si è persa, tenendo solo quelli su una stessa curva liscia (una parabola in x e y nel tempo, quella che passa per più punti). Nel rovescio di Nicola si scartano così i frame 232-234, 60-150 px fuori dalla traiettoria.
+   - **Contatto provato ovunque.** Si prova come contatto ogni frame del buco (209-236) e ciascuno dei due polsi, e per ognuno si fa lo stesso calcolo della traiettoria di `velocita_uscita.py`. Il file del tuo amico non è modificato: per quel calcolo si sostituisce per un momento la sua funzione che trova l'impatto (`refine_impact_visual`), che qui non può lavorare perché mancano i punti attorno al contatto.
+   - **Solo se stabile.** I calcoli con il contatto dal 223 al 229 spiegano i punti quasi allo stesso modo (1,2-1,5 px), ma la velocità va da 50 a oltre 200 km/h: per questo non si scrive. La direzione si scrive solo se tutti i calcoli quasi buoni quanto il migliore (errore fino a 1,5 volte) danno la stessa risposta, con angoli entro 6°.
+
+   Risultato sul rovescio di Nicola: "dal centro verso sinistra", angolo tra −4,7° e −0,4°, arrivo a 3,7 m dalla riga laterale sinistra. La mappa di SwingVision mette il rimbalzo di quel rovescio a circa 3,3 m.
+
+   Prova al contrario sul video di Djokovic, dove la direzione vera è nota: ho cancellato la pallina attorno al contatto del dritto e del rovescio, da 13 a 29 frame, in 6 prove. Il programma non ha mai dato una direzione sbagliata, ma in tutte e 6 ha preferito non darla (una versione senza il controllo sui 6° dava in un caso "dal centro verso sinistra" invece di "centrale": è il motivo di quel controllo). Quando la direzione c'è è affidabile, ma spesso manca.
+
 `velocita/disegna_velocita.py` riscrive il video originale con tipo di colpo, km/h, direzione e una piccola mappa del campo vista dall'alto: punto di contatto, freccia della direzione e fascia centrale in grigio. Per il servizio la mappa mostra il riquadro diviso in tre fasce, con la fascia colpita evidenziata, e la freccia che arriva al rimbalzo previsto.
 
 Risultati senza nessun intervento a mano:
@@ -344,7 +355,7 @@ Risultati senza nessun intervento a mano:
 | Video | Colpo | Contatto | Uscita | Direzione |
 |---|---|---|---|---|
 | Nicola | servizio | frame 15 | 116 km/h | al corpo, verso il T (rimbalzo previsto x 3,96 m) |
-| Nicola | rovescio | frame 223 | non disponibile | pallina coperta dal giocatore |
+| Nicola | rovescio | frame 223 | non disponibile | dal centro verso sinistra (solo direzione, `direzione_nascosta.py`) |
 | Djokovic | dritto | frame 65 | 123 km/h | centrale (−5,6°) |
 | Djokovic | rovescio | frame 217 | 114 km/h | centrale (−0,8°) |
 

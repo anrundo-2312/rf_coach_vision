@@ -129,6 +129,11 @@ def main():
                 etichetta(fr, righe, colore)
                 if c.get("direzione"):
                     mappa(fr, c)
+            elif c.get("direzione"):
+                # contatto coperto: niente km/h, ma la direzione (direzione_nascosta.py)
+                etichetta(fr, [c["colpo"].upper(), "km/h non disponibile", c["direzione"],
+                               "pallina coperta al contatto: solo direzione"], colore)
+                mappa(fr, c)
             else:
                 etichetta(fr, [c["colpo"].upper(), "km/h non disponibile", "pallina coperta dal giocatore"], (150, 150, 150))
         out.write(fr)
