@@ -33,6 +33,21 @@ Come funziona, per ogni colpo con il contatto nascosto:
 4. la direzione si scrive solo se tutti i calcoli che spiegano bene i punti
    (errore fino a 1,5 volte il migliore) danno la stessa risposta, con angoli
    entro 6 gradi. Altrimenti niente.
+Prima di tutto pero' il colpo (istante stimato dalla posa) deve cadere nel
+tratto in cui la pallina e' coperta, con 0,25 s di tolleranza: se la pallina si
+e' persa molto prima del colpo, i punti che si rivedono appartengono a un'altra
+parte dello scambio (successo sul video swing_vision_test1_trim: colpo al frame
+1379, pallina persa al 1247).
+Poi la pallina che ricompare deve allontanarsi dal giocatore PER IL SUO MOTO:
+nel tratto usato la sua distanza dai piedi del giocatore deve crescere e lei
+deve spostarsi nell'immagine piu' del giocatore. Se la distanza cresce solo
+perche' si sposta il giocatore, i punti sono un oggetto quasi fermo, non la
+pallina colpita (video alcaraz, frame 1302: giocatore che cammina, pallina
+spostata di 37 px contro i 149 px del giocatore; dava un falso "al T").
+
+Se il video ha fotogrammi ripetuti (conversione, vedi fotogrammi.py) il calcolo
+usa gli istanti veri: su alcaraz cosi' escono le direzioni dei dritti al 709 e
+dei rovesci al 1015 e al 1152, prima non stabili.
 
 Prove: rovescio di Nicola -> "dal centro verso sinistra", arrivo a 3,7 m
 dalla riga laterale sinistra; la mappa di SwingVision mette il rimbalzo a
@@ -55,6 +70,7 @@ sys.path.insert(0, QUI)
 import rf_ball_exit_speed as calcolo  # noqa: E402
 import palla_locale  # noqa: E402
 import velocita_uscita as vu  # noqa: E402
+import fotogrammi  # noqa: E402
 from calibra_campo import camera_da_json, carica_per_video, leggi_fotogramma  # noqa: E402
 
 CERCA_DOPO_S = 0.75         # la pallina deve ricomparire entro 0,75 s da quando si perde
@@ -63,6 +79,36 @@ SCARTO_CURVA = 6 / 1080     # punti a piu' di 6 px (su 1080) dalla curva liscia:
 ERRORE_MAX = 4 / 1080       # il fit migliore deve spiegare i punti entro 4 px (su 1080)
 TOLLERANZA_FIT = 1.5        # fit "quasi buoni": errore fino a 1,5 volte il migliore (e almeno +0,5 px)
 SPREAD_ANGOLO_MAX = 6.0     # e i loro angoli entro 6 gradi
+# Il colpo (istante stimato dalla posa) deve cadere nel tratto in cui la pallina e' coperta,
+# con al massimo 0,25 s di tolleranza: se la pallina si e' persa molto prima o ricompare
+# molto prima del colpo, i punti visibili appartengono a un'altra parte dello scambio.
+TOLLERANZA_POSA_S = 0.25
+NOTA_BASE = "contatto non visibile: pallina coperta o persa"
+
+
+def piedi_px(t, f):
+    """Punto a terra del giocatore nell'immagine: media delle caviglie, se no il fondo del box."""
+    c = t["caviglie"][f - 1].reshape(2, 2)
+    c = c[np.all(np.isfinite(c), axis=1)]
+    if len(c):
+        return c.mean(axis=0)
+    b = t["box"][f - 1]
+    return np.array([(b[0] + b[2]) / 2, b[3]])
+
+
+def si_allontana(t, fs, P):
+    """
+    (vero/falso, spostamento pallina px, spostamento giocatore px) nel tratto fs:
+    vero se la pallina si allontana dal giocatore e si sposta piu' di lui.
+    Se la posizione del giocatore manca non si puo' giudicare e si lascia passare.
+    """
+    g0, g1 = piedi_px(t, fs[0]), piedi_px(t, fs[-1])
+    palla = float(np.linalg.norm(P[-1] - P[0]))
+    if not (np.all(np.isfinite(g0)) and np.all(np.isfinite(g1))):
+        return True, palla, float("nan")
+    giocatore = float(np.linalg.norm(g1 - g0))
+    cresce = np.linalg.norm(P[-1] - g1) > np.linalg.norm(P[0] - g0)
+    return bool(cresce and palla > giocatore), palla, giocatore
 
 
 def traiettoria_da_contatto(P, fs, fps, cam, t_contatto, pixel_contatto, piedi):
@@ -122,7 +168,8 @@ def direzione(t, f_perso, fs, P, cam, altezza_img, servizio=False):
             if not np.all(np.isfinite(polso)):
                 continue
             try:
-                r = traiettoria_da_contatto(P, fs, fps, cam, fc / fps, polso, piedi)
+                f_fit, fps_fit, tieni = vu.tempi_fit(t, fs)      # istanti veri se ci sono fotogrammi ripetuti
+                r = traiettoria_da_contatto(P[tieni], f_fit, fps_fit, cam, vu.istante(t, fc), polso, piedi)
             except (ValueError, IndexError, np.linalg.LinAlgError):
                 continue
             angolo, x_arrivo, dire = vu.classifica_direzione(piedi[0], r["impact_xyz_m"], r["v0_ms"])
@@ -157,6 +204,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         return colpi
 
     t = vu.leggi_tracking(os.path.join(cartella_dati, nome + "_tracking.csv"))
+    t["tempi"] = fotogrammi.tempi_reali(video, cartella_dati, t["fps"], verbose=False)
     classi = vu.leggi_colpi(os.path.join(cartella_dati, nome + "_colpi.csv"))
     cal, _ = carica_per_video(video, calibrazione)
     cam = camera_da_json(cal)
@@ -166,8 +214,14 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     altezze = {int(f): float(b[3] - b[1]) for f, b in zip(t["frame"], t["box"]) if np.isfinite(b[3] - b[1])}
     finestre = vu.finestre_colpi(classi, n)
 
+    campi_direzione = ("direzione", "angolo_gradi", "giocatore_x_m", "arrivo_x_m", "rimbalzo_x_m", "rimbalzo_y_m",
+                       "contatto_x_m", "contatto_y_m", "contatto_z_m", "punti_usati", "errore_px", "_punti")
     for c in nascosti:
         fc = int(c["frame"])
+        # si riparte dalla riga come l'ha scritta velocita_uscita.py (se il passo viene rieseguito)
+        for k in campi_direzione:
+            c.pop(k, None)
+        c["nota"] = NOTA_BASE
         finestra = [(a, b) for a, b in finestre if a - vu.MARGINE_FINESTRA <= fc <= b + vu.MARGINE_FINESTRA]
         if not finestra:
             continue
@@ -176,6 +230,19 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
                                      tracknet, altezze)
         f_perso = max((f for f in traccia if f <= fc), default=None)
         fs, P = punti_dopo(f_perso, tracknet, t["fps"], altezza_img) if f_perso else ([], None)
+        toll = TOLLERANZA_POSA_S * t["fps"]
+        if fs and not (f_perso - toll <= fc <= fs[0] + toll):
+            if verbose:
+                print(f"frame {fc} {c['colpo']}: la pallina si perde al {f_perso} e ricompare al {fs[0]}, "
+                      f"troppo lontano dal colpo: nessuna direzione")
+            continue
+        if fs:
+            ok, sp_palla, sp_gioc = si_allontana(t, fs, P)
+            if not ok:
+                if verbose:
+                    print(f"frame {fc} {c['colpo']}: la pallina che ricompare non si allontana dal giocatore "
+                          f"(si sposta di {sp_palla:.0f} px, il giocatore di {sp_gioc:.0f} px): nessuna direzione")
+                continue
         m = direzione(t, f_perso, fs, P, cam, altezza_img, c["colpo"] == "servizio") if fs else None
         if m is None:
             if verbose:

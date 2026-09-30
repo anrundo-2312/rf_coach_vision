@@ -16,6 +16,23 @@ Se il rilevatore non trova niente ma TrackNet ha una posizione compatibile,
 si usa quella; se non c'e' nessuno dei due il frame resta vuoto (pallina
 coperta dal giocatore) e si continua dalla previsione.
 
+Giallo FERMO: prima di cominciare si calcola lo sfondo del tratto (mediana di
+15 fotogrammi) e tutto cio' che e' giallo anche nello sfondo (borse, sedie,
+cartelli, palline ferme a terra) non puo' essere la pallina in gioco. Sul video
+alcaraz, al dritto del frame 567, senza questo il rilevatore seguiva una borsa
+gialla a bordo campo.
+
+Ricerca ESTESA (esteso=True), usata da velocita_uscita.py solo per la
+DIREZIONE dei colpi che la ricerca normale non riesce a misurare:
+  - la pallina "strisciata" dal mosso al colpo (macchia allungata fino a 5
+    volte, meno piena) e' accettata;
+  - se la pallina era persa, un punto di TrackNet vicino all'ultima posizione
+    (entro 0,3 altezze del giocatore per frame passato) la riaggancia, anche se
+    e' lontano dalla previsione (dopo il colpo la pallina va nel verso opposto).
+Con questi punti la direzione e' giusta ma la velocita' tende a uscire troppo
+bassa (alcaraz: servizio 124 km/h e dritto 66 km/h, sotto la velocita' MEDIA
+fino al rimbalzo): per questo la ricerca estesa non si usa per i km/h.
+
 Le dimensioni sono in frazioni dell'altezza del giocatore nell'immagine,
 cosi' valgono per video di risoluzione e inquadratura diverse.
 """
@@ -34,10 +51,41 @@ PROPORZIONI = (0.35, 2.8)      # larghezza / altezza della macchia
 RIEMPIMENTO = 0.45             # area / rettangolo che la contiene
 FINESTRA_REL = 0.30            # raggio della zona di ricerca, in altezze del giocatore
 BUCO_MAX = 8                   # frame di fila senza pallina prima di arrendersi
+# Giallo fermo: fotogrammi per lo sfondo del tratto e allargamento della maschera (px)
+CAMPIONI_SFONDO = 15
+ALLARGA_FERMO = 15
+# Ricerca estesa (solo per la direzione): pallina mossa e riaggancio a TrackNet
+AREA_MAX_MOSSO = 5.0
+PROPORZIONI_MOSSO = (0.2, 5.0)
+RIEMPIMENTO_MOSSO = 0.3
+RIAGGANCIO_REL = 0.3           # altezze del giocatore per frame passato dall'ultima posizione
 
 
-def candidati(frame, cx, cy, h_giocatore):
-    """Macchie con colore, dimensione e forma da pallina attorno a (cx, cy)."""
+def giallo_fermo(video, primo, ultimo):
+    """Maschera (0/255) del giallo presente nello sfondo del tratto primo..ultimo."""
+    cap = cv2.VideoCapture(video)
+    imgs = []
+    for f in np.linspace(primo, ultimo, CAMPIONI_SFONDO).astype(int):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, f - 1)
+        ok, fr = cap.read()
+        if ok:
+            imgs.append(fr)
+    cap.release()
+    if not imgs:
+        return None
+    sfondo = np.median(np.stack(imgs), axis=0).astype(np.uint8)
+    m = cv2.inRange(cv2.cvtColor(sfondo, cv2.COLOR_BGR2HSV), HSV_MIN, HSV_MAX)
+    return cv2.dilate(m, np.ones((ALLARGA_FERMO, ALLARGA_FERMO), np.uint8))
+
+
+def candidati(frame, cx, cy, h_giocatore, fermo=None, mosso=False):
+    """
+    Macchie con colore, dimensione e forma da pallina attorno a (cx, cy).
+    fermo: maschera del giallo fermo (giallo_fermo): le macchie li' sopra si scartano.
+    mosso: accetta anche la pallina allungata dal mosso (ricerca estesa).
+    """
+    area_max, proporzioni, riempimento = ((AREA_MAX_MOSSO, PROPORZIONI_MOSSO, RIEMPIMENTO_MOSSO) if mosso
+                                          else (AREA_MAX, PROPORZIONI, RIEMPIMENTO))
     H, W = frame.shape[:2]
     R = max(60, FINESTRA_REL * h_giocatore)
     x0, y0 = max(0, int(cx - R)), max(0, int(cy - R))
@@ -52,23 +100,28 @@ def candidati(frame, cx, cy, h_giocatore):
     out = []
     for i in range(1, n):
         a, bw, bh = st[i, cv2.CC_STAT_AREA], st[i, cv2.CC_STAT_WIDTH], st[i, cv2.CC_STAT_HEIGHT]
-        if not (AREA_MIN * d * d <= a <= AREA_MAX * d * d):
+        if not (AREA_MIN * d * d <= a <= area_max * d * d):
             continue
-        if not (PROPORZIONI[0] <= bw / bh <= PROPORZIONI[1]) or a < RIEMPIMENTO * bw * bh:
+        if not (proporzioni[0] <= bw / bh <= proporzioni[1]) or a < riempimento * bw * bh:
             continue
-        out.append((cen[i][0] + x0, cen[i][1] + y0, min(bw, bh)))
+        x, y = cen[i][0] + x0, cen[i][1] + y0
+        if fermo is not None and fermo[min(H - 1, int(y)), min(W - 1, int(x))]:
+            continue
+        out.append((x, y, min(bw, bh)))
     return out
 
 
-def segui(video, primo, ultimo, tracknet, altezze, seme=None):
+def segui(video, primo, ultimo, tracknet, altezze, seme=None, esteso=False):
     """
     Traccia della pallina nei frame primo..ultimo (numerati da 1 come nel tracking CSV).
 
     tracknet: {frame: (x, y)} posizioni viste da TrackNet
     altezze:  {frame: altezza del giocatore in pixel}
     seme:     (frame, x, y) da cui partire; di default la prima posizione TrackNet
+    esteso:   ricerca estesa (pallina mossa + riaggancio a TrackNet), solo per la direzione
     Restituisce {frame: (x, y, fonte)} con fonte "locale" o "tracknet".
     """
+    fermo = giallo_fermo(video, primo, ultimo)
     if seme is None:
         dentro = [f for f in sorted(tracknet) if primo <= f <= ultimo]
         if not dentro:
@@ -98,7 +151,12 @@ def segui(video, primo, ultimo, tracknet, altezze, seme=None):
         cancello = max(0.12 * h, 2.5 * passo)     # quanto lontano dalla previsione accettiamo
 
         scelto = None
-        c = candidati(fr, px, py, h)
+        if esteso and buco > 0 and f in tracknet:
+            # pallina persa (di solito proprio al colpo): TrackNet vicino all'ultima posizione
+            x, y = tracknet[f]
+            if np.hypot(x - xa, y - ya) <= RIAGGANCIO_REL * h * (f - fa):
+                scelto = (x, y, "tracknet")
+        c = candidati(fr, px, py, h, fermo, esteso) if scelto is None else []
         if c:
             x, y, _ = min(c, key=lambda t: np.hypot(t[0] - px, t[1] - py))
             if np.hypot(x - px, y - py) <= cancello:

@@ -5,9 +5,19 @@ mappa del campo vista dall'alto con da dove parte il colpo e dove va.
 
     python velocita/disegna_velocita.py --video inputs/<video>.mp4
 
-Legge outputs/dati/<video>_velocita_punti.json (velocita_uscita.py) e scrive
+Legge outputs/dati/<video>_velocita_punti.json (velocita_uscita.py,
+direzione_nascosta.py, velocita_rimbalzo.py) e scrive
 outputs/video/<video>_velocita.mp4 in H.264, cosi' si vede anche nel browser.
 Il video di partenza e' quello originale: niente px/s.
+
+Cosa compare per ogni colpo:
+  - "uscita X km/h": velocita' misurata subito dopo il colpo (velocita_uscita.py);
+  - "circa X km/h (dal rimbalzo)": stimata dal rimbalzo nel campo avversario
+    (velocita_rimbalzo.py), meno precisa: margine circa +-15%;
+  - "km/h non disponibile" con la direzione: la velocita' non si puo' misurare
+    (pallina coperta o mossa al colpo) ma la direzione si';
+  - "km/h non disponibile" in grigio: niente di affidabile.
+I pallini gialli sono i punti della pallina usati per il calcolo.
 """
 
 import argparse
@@ -118,7 +128,8 @@ def main():
                 if f <= n:
                     cv2.circle(fr, (int(x), int(y)), max(4, int(8 / s)), (0, 230, 255), max(2, int(2 / s)), cv2.LINE_AA)
         fr = cv2.resize(fr, size, interpolation=cv2.INTER_AREA)
-        for c in attivi:
+        # se due colpi sono vicini, l'etichetta del piu' recente sostituisce l'altra (non si sovrappongono)
+        for c in sorted(attivi, key=lambda c: c["frame"])[-1:]:
             colore = COLORI.get(c["colpo"], (200, 200, 200))
             if c.get("velocita_uscita_kmh", "") != "":
                 righe = [c["colpo"].upper(), f"uscita {c['velocita_uscita_kmh']} km/h"]
@@ -129,13 +140,21 @@ def main():
                 etichetta(fr, righe, colore)
                 if c.get("direzione"):
                     mappa(fr, c)
+            elif c.get("velocita_rimbalzo_kmh", "") != "":
+                # stima dal rimbalzo nel campo avversario (velocita_rimbalzo.py)
+                etichetta(fr, [c["colpo"].upper(), f"circa {c['velocita_rimbalzo_kmh']} km/h (dal rimbalzo)",
+                               c["direzione"], "stima dal rimbalzo: margine circa +-15%"], colore)
+                mappa(fr, c)
             elif c.get("direzione"):
-                # contatto coperto: niente km/h, ma la direzione (direzione_nascosta.py)
-                etichetta(fr, [c["colpo"].upper(), "km/h non disponibile", c["direzione"],
-                               "pallina coperta al contatto: solo direzione"], colore)
+                # niente km/h, ma la direzione (direzione_nascosta.py o ricerca estesa)
+                perche = ("pallina mossa al colpo: solo direzione" if str(c.get("nota", "")).startswith("pallina mossa")
+                          else "pallina coperta al contatto: solo direzione")
+                etichetta(fr, [c["colpo"].upper(), "km/h non disponibile", c["direzione"], perche], colore)
                 mappa(fr, c)
             else:
-                etichetta(fr, [c["colpo"].upper(), "km/h non disponibile", "pallina coperta dal giocatore"], (150, 150, 150))
+                motivo = ("misura non affidabile" if str(c.get("nota", "")).startswith("misura scartata")
+                          else "pallina coperta dal giocatore")
+                etichetta(fr, [c["colpo"].upper(), "km/h non disponibile", motivo], (150, 150, 150))
         out.write(fr)
     out.release()
     # H.264 (si vede anche nel browser e su Colab) se c'e' ffmpeg; altrimenti resta mp4v,

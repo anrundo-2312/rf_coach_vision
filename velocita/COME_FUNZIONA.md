@@ -342,13 +342,17 @@ I passaggi che nelle prime prove facevo a mano ora li fa `velocita/velocita_usci
    - **Perché la direzione sì e la velocità no.** Vista dall'alto, dopo il colpo la pallina va praticamente dritta: la gravità la tira giù e l'aria la rallenta, ma nessuna delle due la fa girare di lato. Basta quindi vedere un pezzo di volo dopo il buco, sapendo che parte vicino al giocatore. La velocità invece cala lungo il volo, e per risalire a quella di uscita serve l'istante esatto del contatto, che è proprio nel buco.
    - **Punti dopo il buco.** I punti di TrackNet nei 0,75 s dopo il frame in cui la pallina si è persa, tenendo solo quelli su una stessa curva liscia (una parabola in x e y nel tempo, quella che passa per più punti). Nel rovescio di Nicola si scartano così i frame 232-234, 60-150 px fuori dalla traiettoria.
    - **Contatto provato ovunque.** Si prova come contatto ogni frame del buco (209-236) e ciascuno dei due polsi, e per ognuno si fa lo stesso calcolo della traiettoria di `velocita_uscita.py`. Il file del tuo amico non è modificato: per quel calcolo si sostituisce per un momento la sua funzione che trova l'impatto (`refine_impact_visual`), che qui non può lavorare perché mancano i punti attorno al contatto.
+   - **Il colpo deve stare nel buco.** L'istante del colpo stimato dalla posa deve cadere tra il frame in cui la pallina si perde e quello in cui ricompare, con 0,25 s di tolleranza. Senza questo controllo, sul video swing_vision_test1_trim un rovescio al frame 1379, con la pallina persa già al 1247, riceveva una direzione calcolata su frame di prima del colpo.
+   - **La pallina deve allontanarsi per conto suo.** Nel tratto usato la distanza tra la pallina e i piedi del giocatore deve crescere e la pallina deve spostarsi nell'immagine più del giocatore. Sul video alcaraz, al frame 1302, il giocatore camminava (149 px) mentre la "pallina" restava quasi ferma (37 px): la distanza cresceva solo perché si muoveva lui. Una pallina quasi ferma dietro al giocatore si può spiegare come un colpo che va dritto lontano dalla camera, e senza questo controllo usciva un falso "al T".
    - **Solo se stabile.** I calcoli con il contatto dal 223 al 229 spiegano i punti quasi allo stesso modo (1,2-1,5 px), ma la velocità va da 50 a oltre 200 km/h: per questo non si scrive. La direzione si scrive solo se tutti i calcoli quasi buoni quanto il migliore (errore fino a 1,5 volte) danno la stessa risposta, con angoli entro 6°.
 
    Risultato sul rovescio di Nicola: "dal centro verso sinistra", angolo tra −4,7° e −0,4°, arrivo a 3,7 m dalla riga laterale sinistra. La mappa di SwingVision mette il rimbalzo di quel rovescio a circa 3,3 m.
 
    Prova al contrario sul video di Djokovic, dove la direzione vera è nota: ho cancellato la pallina attorno al contatto del dritto e del rovescio, da 13 a 29 frame, in 6 prove. Il programma non ha mai dato una direzione sbagliata, ma in tutte e 6 ha preferito non darla (una versione senza il controllo sui 6° dava in un caso "dal centro verso sinistra" invece di "centrale": è il motivo di quel controllo). Quando la direzione c'è è affidabile, ma spesso manca.
 
-`velocita/disegna_velocita.py` riscrive il video originale con tipo di colpo, km/h, direzione e una piccola mappa del campo vista dall'alto: punto di contatto, freccia della direzione e fascia centrale in grigio. Per il servizio la mappa mostra il riquadro diviso in tre fasce, con la fascia colpita evidenziata, e la freccia che arriva al rimbalzo previsto.
+8. **Controllo del risultato.** Il calcolo resta identico: si decide solo se mostrarlo. Sul video alcaraz alcuni colpi davano 4, 377 e 25 km/h, con angoli fino a 85°. In tutti e tre la traiettoria 3D spiegava male i punti: 17–35 px di errore, contro 1–3 px dei colpi buoni (riportati a 1080p: Nicola 2,0, Djokovic 2,0 e 0,8, swing_vision 0,7, il dritto buono di Alcaraz 2,8). Il motivo è che i punti seguiti non erano la pallina colpita: la racchetta gialla di Alcaraz presa dal rilevatore di colore, altre palline, l'altro giocatore. Ora velocità e direzione non si scrivono se l'errore supera 6 px a 1080p, oppure se la velocità è fuori da 30–250 km/h, oppure se un colpo da fondo ha un angolo oltre 45°. La riga resta nel CSV con la nota "misura scartata" e i motivi, e sul video compare "misura non affidabile". Sui colpi di Nicola, Djokovic e swing_vision non cambia niente.
+
+`velocita/disegna_velocita.py` riscrive il video originale con tipo di colpo, km/h, direzione e una piccola mappa del campo vista dall'alto: punto di contatto, freccia della direzione e fascia centrale in grigio. Per il servizio la mappa mostra il riquadro diviso in tre fasce, con la fascia colpita evidenziata, e la freccia che arriva al rimbalzo previsto. Se due colpi sono vicini, l'etichetta del più recente sostituisce quella del precedente, così non si sovrappongono.
 
 Risultati senza nessun intervento a mano:
 
@@ -358,7 +362,51 @@ Risultati senza nessun intervento a mano:
 | Nicola | rovescio | frame 223 | non disponibile | dal centro verso sinistra (solo direzione, `direzione_nascosta.py`) |
 | Djokovic | dritto | frame 65 | 123 km/h | centrale (−5,6°) |
 | Djokovic | rovescio | frame 217 | 114 km/h | centrale (−0,8°) |
+| Alcaraz | dritto | frame 275 | 147 km/h | dal centro verso destra (+3,9°) |
+| Alcaraz | 8 colpi | vedi il paragrafo 8 | | |
 
 I frame di contatto coincidono con quelli verificati a occhio. Le velocità differiscono di 5–7 km/h dalle prove fatte a mano, per piccole differenze nei punti usati e nella posizione dei piedi: è dentro il margine di circa ±20 km/h. Le soglie sono state provate solo su questi due video e vanno verificate su altri.
 
 Confronto del servizio di Nicola con SwingVision: la sua mappa mette il rimbalzo a (4,2; 15,9) m, 1,28 m dalla riga centrale, cioè al T ma a 9 cm dal confine con il corpo. Noi lo mettiamo a 3,96 m, 1,52 m dalla riga centrale: al corpo, 15 cm oltre il confine, e per questo scriviamo "al corpo, verso il T". La differenza laterale è di 24 cm, dentro la precisione attesa. La profondità invece differisce di 2,3 m (18,2 contro 15,9), come previsto dalle simulazioni e forse anche per lo slice.
+
+## 8. Il video di Alcaraz: cosa non andava e cosa è cambiato
+
+Sul video `alcaraz.mp4` all'inizio usciva una sola misura credibile su 8 colpi, contro risultati perfetti sui video di Nicola e di Djokovic. Il confronto fotogramma per fotogramma con Djokovic ha mostrato quattro differenze reali (non la dimensione del giocatore, simile, né la velocità della pallina nell'immagine, simile anche quella):
+
+1. **Il mosso.** Djokovic è ripreso all'aperto in piena luce: la pallina resta un pallino nitido anche al colpo. Alcaraz è indoor: al colpo la racchetta è una macchia e la pallina diventa una striscia 3–4 volte più lunga che larga, che il rilevatore di colore (che cerca "una macchia tonda e piena") scarta.
+2. **I fotogrammi ripetuti.** Il video è girato a 50 fps e convertito a 60 ripetendo un fotogramma ogni 6: il calcolo credeva che tra due fotogrammi passasse sempre 1/60 s.
+3. **Gli oggetti gialli.** Borse e sedie a bordo campo, la racchetta gialla di Alcaraz.
+4. **La scelta del video.** Djokovic: 4 s con 2 colpi puliti. Alcaraz: 22 s con 8 colpi, servizio, camminate, altre palline.
+
+### 8.1 La scheda di verifica
+
+Per misurare i miglioramenti ho fatto una scheda: gli 8 colpi veri con il contatto controllato a occhio (servizio 141; dritti 275, 419, 569, 717; rovesci 871, 1017, 1168, uno ogni 2,5 s circa) e, dove si vede, il rimbalzo nel campo avversario, da cui la direzione e una velocità di riferimento indipendente dalla pallina mossa. Il dritto al 246 non è un colpo; al 1302 Alcaraz cammina.
+
+### 8.2 Le modifiche adottate
+
+- **Istanti veri dei fotogrammi** (`fotogrammi.py`). Il video si legge ridotto a 192×108 in grigi; un fotogramma è ripetuto se è molto più simile al precedente dei vicini. Si attiva solo con ripetizioni regolari (almeno l'8% dei fotogrammi, passo fisso): su alcaraz 214 ripetuti su 1315, uno ogni 6, 50,2 fotogrammi veri al secondo; su Nicola, Djokovic e swing_vision non si attiva. I ripetuti si tolgono dal calcolo e agli altri si dà l'istante vero. Dritto al 275: errore della traiettoria da 2,8 a 1,1 px, da 147 a 138 km/h. Con gli istanti veri anche `direzione_nascosta.py` trova la direzione di altri due colpi (717 lungo linea, 1017 incrociato).
+- **Giallo fermo ignorato** (`palla_locale.py`). Mediana di 15 fotogrammi del tratto; il giallo dello sfondo, allargato di 15 px, non è pallina. Il dritto al 569 non segue più la borsa e ha la direzione giusta (incrociato).
+- **Ricerca estesa, solo per la direzione** (`palla_locale.py` con `esteso=True`, `velocita_uscita.solo_direzione`). Solo nei colpi senza nessuna velocità: si accetta la pallina strisciata dal mosso, la si riaggancia a TrackNet quando si perde e, nel servizio, si parte dal lancio. La direzione esce giusta (servizio 141 al T, dritto 418 lungo linea), ma la velocità no: 124 e 66 km/h, sotto la velocità *media* fino al rimbalzo (137 e circa 105 km/h), cosa impossibile perché la pallina rallenta. Per questo se ne tiene solo la direzione.
+- **Velocità stimata dal rimbalzo** (`velocita_rimbalzo.py`). Per i colpi rimasti senza km/h: se si vede il rimbalzo nel campo avversario, la traiettoria (gravità + aria) dal giocatore al rimbalzo nel tempo misurato dà la velocità d'uscita. Dove anche il calcolo normale funziona i due metodi concordano (Djokovic 65: 123 e 132 km/h; alcaraz 275: 138 e 128). Colonna a parte nel CSV, "circa ... km/h (dal rimbalzo)" sul video, margine circa ±15%.
+
+### 8.3 Risultato
+
+| Colpo | Prima | Dopo |
+|---|---|---|
+| servizio 141 | niente | circa 166 km/h (dal rimbalzo), al T |
+| dritto 275 | 147 km/h, dal centro verso destra | 138 km/h, dal centro verso destra |
+| dritto 418 | niente | lungo linea (solo direzione) |
+| dritto 569 | scartato (seguiva una borsa) | circa 153 km/h (dal rimbalzo), incrociato |
+| dritto 717 | niente | lungo linea (contatto coperto) |
+| rovescio 871 | scartato | circa 127 km/h (dal rimbalzo), centrale |
+| rovescio 1017 | niente | incrociato (contatto coperto) |
+| rovescio 1168 | niente, nemmeno la riga | circa 152 km/h (dal rimbalzo), lungo linea |
+
+Direzioni 8 su 8, tutte uguali a quelle della scheda. Velocità: 1 misurata e 4 stimate dal rimbalzo. Nicola e Djokovic restano identici; su swing_vision il dritto resta 90 km/h e compaiono la direzione del servizio (esterno) e un rovescio che prima mancava (centrale), senza km/h.
+
+### 8.4 Cosa ho provato e scartato
+
+- **Ripartire a cercare la pallina dopo 8 frame vuoti** invece di arrendersi: rompeva il rovescio di Nicola.
+- **Usare la ricerca estesa anche per i km/h**: velocità troppo basse (vedi sopra).
+- **Controllo di stabilità** (ricalcolare spostando il contatto di un frame): anche i colpi buoni cambiano molto, mentre un valore sbagliato può restare stabile. Non distingue.
+- **Controllo col rimbalzo sui km/h misurati** (non mostrarli se sotto la media fino al rimbalzo): proposto, non adottato per scelta.

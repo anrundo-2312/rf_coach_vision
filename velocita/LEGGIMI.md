@@ -31,12 +31,19 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
   (cella 7c): i clic li legge il browser, calcolo e file sono quelli di
   `calibra_campo.py`.
 - `palla_locale.py` - rilevatore della pallina per colore, attorno al
-  giocatore, dove TrackNet la perde.
+  giocatore, dove TrackNet la perde. Ignora il giallo fermo dello sfondo
+  (borse, cartelli) e ha una ricerca "estesa" usata solo per la direzione.
+- `fotogrammi.py` - riconosce i video convertiti con fotogrammi ripetuti (es.
+  50 -> 60 fps) e da' a ogni fotogramma il suo istante vero. Sui video del
+  telefono non si attiva.
 - `velocita_uscita.py` - il programma principale: trova i colpi e calcola
   velocita' e direzione.
 - `direzione_nascosta.py` - solo per i colpi in cui la pallina e' coperta dal
   giocatore al contatto: prova a ricavare la direzione dal volo che si vede
   dopo. Non tocca la velocita'.
+- `velocita_rimbalzo.py` - per i colpi rimasti senza km/h: velocita' STIMATA
+  dal rimbalzo nel campo avversario, quando si vede. Va in una colonna a
+  parte e sul video compare come "circa ... km/h (dal rimbalzo)".
 - `disegna_velocita.py` - riscrive il video con colpo, km/h, direzione e una
   piccola mappa del campo.
 - `calibrazioni/` - `standard.json`, la calibrazione standard, e quelle dei
@@ -137,6 +144,7 @@ E infine velocita', direzione e video:
 ```
 python velocita/velocita_uscita.py --video inputs/<video>.mp4
 python velocita/direzione_nascosta.py --video inputs/<video>.mp4
+python velocita/velocita_rimbalzo.py --video inputs/<video>.mp4
 python velocita/disegna_velocita.py --video inputs/<video>.mp4
 ```
 
@@ -178,7 +186,9 @@ salvata, senza finestre (anche su Colab).
 2. **Pallina nella finestra.** TrackNet dove la vede, il rilevatore di colore
    (`palla_locale.py`) dove la perde: succede proprio attorno al colpo,
    quando la pallina arriva lungo la linea di vista e nell'immagine quasi non
-   si muove.
+   si muove. Il giallo presente anche nello sfondo del tratto (mediana di 15
+   fotogrammi: borse, sedie, cartelli) non viene preso per la pallina: sul
+   video alcaraz, al dritto del frame 567, prima seguiva una borsa gialla.
 3. **Contatto.** Cambio brusco della direzione della pallina (3 frame prima
    contro 3 dopo) con la pallina entro 0,6 altezze del giocatore da un polso,
    e pallina che DOPO si allontana veloce. L'ultima condizione scarta il
@@ -188,7 +198,12 @@ salvata, senza finestre (anche su Colab).
    a 60 fps), con la posizione a terra del giocatore (caviglie della posa,
    nel frame in cui i piedi sono piu' in basso: nel servizio al contatto sono
    in aria), il contatto entro 1 m dal giocatore (`depth_tol`) e la pallina
-   diretta verso il campo avversario (`forward`).
+   diretta verso il campo avversario (`forward`). Se il video e' una
+   conversione con fotogrammi ripetuti (`fotogrammi.py`: almeno l'8% dei
+   fotogrammi, a passo regolare, es. uno ogni 6 in un video a 50 fps portato
+   a 60), i ripetuti si tolgono e si usano gli istanti veri: sul dritto al 275
+   di alcaraz l'errore della traiettoria scende da 2,8 a 1,1 px (147 -> 138
+   km/h). Sugli altri video non cambia niente.
 5. **Direzione.** Angolo della pallina rispetto alle righe laterali; la
    direzione viene prolungata fino a 21 m (tra riga del servizio e fondo
    lontani) per vedere in che meta' arriva:
@@ -208,8 +223,57 @@ salvata, senza finestre (anche su Colab).
 6. Se la posa indica un colpo, la pallina arriva al giocatore ma il contatto
    non si vede (pallina coperta dal corpo), il colpo viene scritto lo stesso,
    senza velocita', con una nota.
+7. **Controllo del risultato.** Il calcolo non cambia: si decide solo se
+   mostrarlo. Velocita' e direzione NON si scrivono quando la traiettoria 3D
+   non spiega i punti della pallina (errore sopra 6 px, riportato a 1080p;
+   sui colpi buoni e' 1-3 px), oppure il risultato non e' da tennis:
+   velocita' fuori da 30-250 km/h, oppure un colpo da fondo con angolo oltre
+   45 gradi. Nel CSV la riga resta, con `punti_usati`, `errore_px` e la nota
+   "misura scartata: ..." con i motivi; sul video compare "km/h non
+   disponibile - misura non affidabile". Succede quando i punti seguiti non
+   sono la pallina colpita: sul video alcaraz la racchetta gialla presa dal
+   rilevatore di colore, altre palline, l'altro giocatore.
+
+8. **Solo direzione.** Se in un colpo non esce nessuna velocita', la
+   pallina si cerca di nuovo in modo esteso: si accetta anche la pallina
+   "strisciata" dal mosso al colpo, e se si perde si riaggancia al punto di
+   TrackNet vicino all'ultima posizione; nel servizio si parte dal lancio
+   (punti sopra la testa del giocatore) invece che dai palleggi. Se la
+   traiettoria spiega bene i punti se ne tiene SOLO la direzione: con la
+   pallina mossa al colpo la velocita' esce troppo bassa (alcaraz: servizio
+   124 km/h e dritto 66 km/h, sotto la velocita' media fino al rimbalzo, 137
+   e circa 105 km/h). Nel CSV la nota e' "pallina mossa al colpo: solo
+   direzione".
 
 Tutte le soglie sono in cima al file.
+
+## Velocita' stimata dal rimbalzo
+
+`velocita_rimbalzo.py` si esegue dopo `direzione_nascosta.py` e guarda solo i
+colpi ancora senza km/h. Quando la pallina e' mossa o coperta vicino al
+giocatore i punti subito dopo il colpo non sono buoni, ma spesso si vede dove
+la pallina rimbalza nel campo avversario: quel punto e' a terra, quindi con
+la calibrazione si sa esattamente dov'e'. Sapendo da dove parte la pallina
+(il giocatore, a 1 m d'altezza; 2,6 m nel servizio), dove arriva e in quanto
+tempo, c'e' una sola traiettoria con gravita' e resistenza dell'aria (lo
+stesso modello del calcolo normale) che la spiega.
+
+1. Rimbalzo: nei punti di TrackNet dopo il colpo, il primo punto piu' basso
+   nell'immagine di quelli vicini (la pallina scende verso terra e risale),
+   che a terra cada nel campo avversario.
+2. Contatto: si risale dal rimbalzo lungo i punti di TrackNet finche' sono
+   continui e la pallina non cambia bruscamente velocita' o direzione; il
+   primo punto e' la pallina appena colpita, il contatto e' mezzo frame prima.
+3. Velocita' e direzione dalla traiettoria giocatore -> rimbalzo; la
+   direzione viene dal rimbalzo misurato.
+
+Nel CSV la stima va nella colonna `velocita_rimbalzo_kmh` (quella di
+`velocita_uscita_kmh` non viene mai toccata); sul video compare "circa ...
+km/h (dal rimbalzo)" con margine circa +-15%. Dove anche il calcolo normale
+funziona, i due metodi vanno d'accordo: Djokovic, dritto al 65, 123 km/h dal
+calcolo normale e 132 dal rimbalzo; alcaraz, dritto al 275, 138 e 128.
+Limite: spesso il rimbalzo non si vede (rete, testa del giocatore,
+avversario); allora non si stima niente.
 
 ## Colpi con il contatto nascosto: solo la direzione
 
@@ -230,6 +294,17 @@ di lato.
    `rf_ball_exit_speed.py` non e' modificato).
 3. La direzione si scrive solo se tutti i calcoli che spiegano bene i punti
    danno la stessa risposta, con angoli entro 6 gradi; altrimenti niente.
+4. Il colpo (istante stimato dalla posa) deve cadere nel tratto in cui la
+   pallina e' coperta, con 0,25 s di tolleranza. Se la pallina si e' persa
+   molto prima, i punti che si rivedono sono di un'altra parte dello scambio:
+   sul video swing_vision_test1_trim il rovescio al frame 1379 aveva la
+   pallina persa al 1247, e senza questo controllo usciva una direzione
+   presa da frame di prima del colpo.
+5. La pallina che ricompare deve allontanarsi dal giocatore per il suo moto:
+   la distanza dai piedi del giocatore deve crescere e la pallina deve
+   spostarsi nell'immagine piu' del giocatore. Sul video alcaraz, frame
+   1302, il giocatore camminava (149 px) e la "pallina" quasi ferma (37 px):
+   senza questo controllo usciva un falso "al T".
 
 Nel CSV la nota dice da quali frame viene e l'intervallo degli angoli; sul
 video compare "km/h non disponibile" con la direzione e la mappa.
@@ -268,6 +343,16 @@ con il suo margine.
 | nicola_matarese_trim | rovescio | frame 223 | non disponibile (pallina coperta) | dal centro verso sinistra (direzione_nascosta.py) |
 | zverev_djokovic_trim_swin_like | dritto | frame 65 | 123 km/h | centrale |
 | zverev_djokovic_trim_swin_like | rovescio | frame 217 | 114 km/h | centrale |
+| swing_vision_test1_trim | dritto | frame 412 | 90 km/h | dal centro verso destra |
+| swing_vision_test1_trim | servizio, rovescio | frame 302, 553 | non disponibile (pallina mossa) | esterno, centrale (solo direzione) |
+| alcaraz | servizio | frame 141 | circa 166 km/h (dal rimbalzo) | al T |
+| alcaraz | dritto | frame 275 | 138 km/h | dal centro verso destra |
+| alcaraz | dritto | frame 418 | non disponibile (pallina mossa) | lungo linea (solo direzione) |
+| alcaraz | dritto | frame 569 | circa 153 km/h (dal rimbalzo) | incrociato |
+| alcaraz | dritto | frame 717 | non disponibile (pallina coperta) | lungo linea (direzione_nascosta.py) |
+| alcaraz | rovescio | frame 871 | circa 127 km/h (dal rimbalzo) | centrale |
+| alcaraz | rovescio | frame 1017 | non disponibile (pallina coperta) | incrociato (direzione_nascosta.py) |
+| alcaraz | rovescio | frame 1168 | circa 152 km/h (dal rimbalzo) | lungo linea |
 
 Il video di Nicola e' registrato con SwingVision, che per il servizio indica
 83 km/h: pero' SwingVision mostra la velocita' MEDIA del volo, non quella di
@@ -277,7 +362,19 @@ calcoliamo cade quasi dove lo mette la sua mappa. Con il programma automatico
 lui e' al T vicino al confine, noi al corpo vicino al confine, da qui "al
 corpo, verso il T". In profondita' la differenza e' di 2,3 m, come previsto.
 
-Solo 3 colpi misurati: le soglie vanno verificate su altri video.
+Il video alcaraz (1080p, calibrazione del video con errore 9,5 px) e' difficile:
+ripreso indoor con poca luce (la pallina colpita diventa una striscia mossa),
+convertito da 50 a 60 fps, con oggetti gialli in campo. Gli 8 colpi veri
+(contatti controllati a occhio, uno ogni 2,5 s circa) hanno ora tutti una
+direzione, e tutte e 8 coincidono con quelle ricavate dai rimbalzi e dalle
+immagini (il rovescio finale "lungo linea" l'aveva visto anche l'utente).
+Velocita': una misurata (dritto al 275) e quattro stimate dal rimbalzo. Il
+dritto al frame 246 non e' un colpo (resta "misura non affidabile") e il
+"servizio" al 1302 e' un errore del classificatore (il giocatore cammina):
+resta nel CSV senza direzione.
+
+Le soglie sono state provate solo su questi quattro video: vanno verificate
+su altri.
 
 ## Limiti e prossimi passi
 
@@ -286,8 +383,18 @@ Solo 3 colpi misurati: le soglie vanno verificate su altri video.
   (`direzione_nascosta.py`).
 - La calibrazione standard vale solo con il telefono messo nella posizione
   standard; per gli altri video va fatta la calibrazione del video.
-- Il rilevatore di colore puo' confondersi con oggetti dello stesso colore
-  (magliette lime, scritte).
+- Il rilevatore di colore puo' confondersi con oggetti gialli IN MOVIMENTO
+  (magliette lime, racchette gialle come quella di Alcaraz): il giallo fermo
+  ora viene ignorato, quello in movimento no; il controllo del punto 7
+  nasconde i risultati sbagliati, ma non recupera la misura.
+- Con poca luce la pallina colpita e' una striscia mossa: la velocita' subito
+  dopo il colpo non si misura bene (resta la direzione, e la stima dal
+  rimbalzo quando si vede). Meglio girare con molta luce o a 120/240 fps.
+- La velocita' dal rimbalzo e' una stima (+-15%): contatto approssimato
+  (piedi del giocatore, altezza fissa), tempo di volo +-1 frame, rotazione
+  non nel modello.
+- Il classificatore della posa a volte vede un servizio dove il giocatore
+  cammina (alcaraz, frame 1302).
 - Il servizio in slice o in kick curva di lato: la rotazione non e' nel
   modello, quindi il rimbalzo vero puo' spostarsi rispetto a quello previsto.
 - Da fare: avviso automatico quando le righe del campo non coincidono con la
