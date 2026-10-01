@@ -420,7 +420,7 @@ Il dritto al 418/419 usciva "lungo linea", ma a vederlo la pallina parte dal cen
 - la partenza si misura dai piedi: Alcaraz aveva i piedi a x 4,24 (1,25 m a sinistra della riga centrale), ma nel dritto la racchetta colpisce lontano dal corpo e il contatto era a x 5,41, praticamente sulla riga centrale;
 - con un centro di ±1 m bastavano 25 cm per passare da "dal centro" a "da sinistra".
 
-Ora il centro è il terzo centrale del campo singolo, entro 1,37 m dalla riga centrale (`FASCIA_CENTRO = (CENTRO_X - 1.37) / 3`, la stessa misura delle fasce del servizio), per la partenza e per l'arrivo. Il 418 diventa "dal centro verso sinistra". Prova A/B sui quattro video: cambia solo quella riga. Ho provato anche a misurare la partenza dal punto di contatto invece che dai piedi: nelle stime dal rimbalzo il contatto non si misura (si usano i piedi), quindi il 418 non cambiava, mentre il rovescio di Nicola diventava "lungo linea"; scartato.
+Ora il centro è il terzo centrale del campo singolo, entro 1,37 m dalla riga centrale (`FASCIA_CENTRO = (CENTRO_X - 1.37) / 3`, la stessa misura delle fasce del servizio), per la partenza e per l'arrivo. Il 418 diventa "dal centro verso sinistra". Prova A/B sui quattro video: cambia solo quella riga. Ho provato anche a misurare la partenza dal punto di contatto invece che dai piedi: nelle stime dal rimbalzo il contatto non si misura (si usano i piedi), quindi il 418 non cambiava, mentre il rovescio di Nicola diventava "lungo linea"; scartato in quella forma (ripresa poi in un'altra forma, vedi 8.7).
 
 Sulla mappa del video la fascia grigia del centro è ora larga 2,74 m.
 
@@ -428,13 +428,27 @@ Sulla mappa del video la fascia grigia del centro è ora larga 2,74 m.
 
 Sulla mappa del video ora compare anche dove la pallina rimbalza nel campo avversario: pallino giallo bordato di nero se il rimbalzo si vede (TrackNet o colore), cerchio giallo vuoto se è ricostruito. Per i colpi stimati dal rimbalzo (passi 1-5) il punto c'era già; per tutti gli altri colpi con una direzione `velocita_rimbalzo.py` lo cerca con un passo nuovo (passo 6): nei 1,6 s dopo il colpo, con TrackNet, poi il colore nel campo lontano, poi il rimbalzo ricostruito. Il passo 6 non cambia né la velocità né la direzione: dà il punto e un controllo, e se la direzione che darebbe il rimbalzo è diversa la nota lo dice. Colonne nuove: `rimbalzo_trovato_x_m`, `rimbalzo_trovato_y_m`, `rimbalzo_trovato_frame`, `rimbalzo_trovato_come`.
 
+Poi, su richiesta, la freccia della mappa arriva fino al pallino del rimbalzo quando c'è (la punta si ferma sul bordo del pallino); se il rimbalzo non c'è resta fino a 21 m, il punto usato per la classe. È solo il disegno: la classe e i numeri del CSV non cambiano.
+
 Controllo sui colpi con la velocità misurata: il rimbalzo si trova in 3 su 5 (alcaraz 275 e Djokovic 65 con TrackNet, swing_vision 412 con il colore) e in tutti e 3 la direzione è la stessa del calcolo normale. Su swing_vision 412 il punto cade dove nell'immagine si vede rimbalzare la pallina, a destra del centro. Prova A/B sui quattro video: le colonne di prima restano identiche, cambiano solo le colonne nuove.
 
 Per il tempo: la ricerca col colore leggeva ogni fotogramma con un salto (circa 0,5 s a fotogramma in 4K); ora legge in fila (0,02 s). Stessi risultati, da circa 50 a 15 s a colpo in 4K; il resto è il calcolo del giallo fermo.
 
-Nota: con il programma di oggi i confronti tra le due velocità dove funzionano entrambe sono alcaraz 275: 138 misurati e 131 dal rimbalzo; Djokovic 65: 123 e 144 dal rimbalzo trovato col colore (i passi 1-3 non trovano più l'inizio della traiettoria). I 132 e 128 del paragrafo 8.2 erano del programma del 30/09.
+Nota: con il programma di oggi i confronti tra le due velocità dove funzionano entrambe sono alcaraz 275: 138 misurati e 131 dal rimbalzo; Djokovic 65: 123 e 144 dal rimbalzo trovato col colore (con la partenza dal contatto, 8.7: 130 e 145) (i passi 1-3 non trovano più l'inizio della traiettoria). I 132 e 128 del paragrafo 8.2 erano del programma del 30/09.
 
-### 8.7 Cosa ho provato e scartato
+### 8.7 Il colpo parte dal punto di contatto, non dai piedi (1° ottobre)
+
+Sul video il dritto 418 aveva l'etichetta calcolata dai piedi e la freccia della mappa disegnata dal contatto: le due cose potevano non andare d'accordo. Ora il lato di partenza dei dritti e dei rovesci viene dal punto di contatto, in quest'ordine:
+
+1. **contatto**: il punto di contatto del calcolo (`impact_xyz_m`), quando il contatto si è visto (calcolo normale e ricerca estesa). Il contatto di `direzione_nascosta.py` è un'ipotesi (messo al polso in un fotogramma del tratto coperto), quindi non conta.
+2. **traiettoria**: i punti della pallina nel primo 1/6 di secondo dopo il contatto (10 frame a 60 fps, con gli istanti veri nei video convertiti; almeno 3), con una retta nel tempo per x e y dell'immagine riportata all'istante del contatto; quel pixel si porta alla profondità del giocatore con la calibrazione. Non il primo punto così com'è. Se il punto viene a più di 2,5 m dai piedi si scarta. Siccome il contatto di solito è un po' davanti al corpo, il punto si sposta leggermente verso l'asse della camera (circa 0,15-0,3 m per metro di differenza).
+3. **piedi**: come prima, se non c'è nient'altro.
+
+Il servizio resta sui piedi (il lato decide il riquadro: dove sta chi serve). Nelle stime dal rimbalzo il volo parte da questo punto invece che dai piedi, quindi cambiano un po' `contatto_x_m`, `arrivo_x_m` e `angolo_gradi`, e i km/h di ±1. Nuove colonne: `partenza_da` (contatto / traiettoria / piedi) e, per leggere la regola in gradi, `soglia_sx_gradi` e `soglia_dx_gradi`: gli angoli dal contatto ai due confini del terzo centrale a 21 m.
+
+Prova A/B, prima con il centro di 1 m: sui quattro video cambia solo il 418 ("lungo linea" → "dal centro verso sinistra"); Nicola, Djokovic e swing_vision restano con le stesse direzioni (su swing_vision 553 cambiano solo contatto, arrivo e angolo, perché la stima dal rimbalzo ora parte dal contatto della ricerca estesa). Il 717 resta "lungo linea": contatto coperto, partenza dalla traiettoria a x 7,69 (piedi 7,53). Poi la larghezza del centro: con 1 m, con i terzi e con 1,6 m le classi sui quattro video sono uguali; con 2 m quattro colpi cambiano in peggio (alcaraz 577 e 1152, tirati dall'angolo, diventano "dal centro"; Nicola 223 e swing 412 diventano "centrale"). Resta quindi il terzo centrale.
+
+### 8.8 Cosa ho provato e scartato
 
 - **Ripartire a cercare la pallina dopo 8 frame vuoti** invece di arrendersi: rompeva il rovescio di Nicola.
 - **Usare la ricerca estesa anche per i km/h**: velocità troppo basse (vedi sopra).

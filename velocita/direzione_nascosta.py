@@ -162,6 +162,14 @@ def direzione(t, f_perso, fs, P, cam, altezza_img, servizio=False):
     """
     fps = t["fps"]
     fits = []
+    # lato di partenza (dritti e rovesci): il contatto qui e' un'ipotesi (coperto), quindi non vale come
+    # "contatto"; si prova con i punti nel primo 1/6 s dopo il contatto, preso a meta' del tratto coperto
+    # (come in velocita_rimbalzo.py), altrimenti i piedi
+    f_meta = (f_perso + fs[0]) / 2
+    piedi_meta = vu.piedi_a_terra(t, int(f_meta), cam)
+    t_meta = (vu.istante(t, f_perso) + vu.istante(t, fs[0])) / 2
+    partenza = vu.punto_di_partenza(t, cam, piedi_meta, punti={int(f): tuple(p) for f, p in zip(fs, P)},
+                                    t_contatto=t_meta)
     for fc in range(f_perso + 1, fs[0]):
         piedi = vu.piedi_a_terra(t, fc, cam)
         for polso in t["polsi"][fc - 1].reshape(2, 2):
@@ -172,7 +180,9 @@ def direzione(t, f_perso, fs, P, cam, altezza_img, servizio=False):
                 r = traiettoria_da_contatto(P[tieni], f_fit, fps_fit, cam, vu.istante(t, fc), polso, piedi)
             except (ValueError, IndexError, np.linalg.LinAlgError):
                 continue
-            angolo, x_arrivo, dire = vu.classifica_direzione(piedi[0], r["impact_xyz_m"], r["v0_ms"])
+            # partenza dalla traiettoria, se c'e'; se no i piedi di questo tentativo, come prima
+            x_part = partenza[0] if partenza[1] == "traiettoria" else float(piedi[0])
+            angolo, x_arrivo, dire = vu.classifica_direzione(x_part, r["impact_xyz_m"], r["v0_ms"])
             _, rimbalzo = calcolo.ground_crossing(r["impact_xyz_m"], r["v0_ms"])
             if servizio:
                 dire = vu.classifica_servizio(float(piedi[0]), rimbalzo)
@@ -189,7 +199,9 @@ def direzione(t, f_perso, fs, P, cam, altezza_img, servizio=False):
     if len(classi) > 1 or max(angoli) - min(angoli) > SPREAD_ANGOLO_MAX:
         return None
     _, r, piedi, angolo, x_arrivo, dire, rimbalzo = migliore
-    return r, piedi, angolo, x_arrivo, dire, rimbalzo, min(angoli), max(angoli)
+    if servizio or partenza[1] == "piedi":
+        partenza = (float(piedi[0]), "piedi")
+    return r, piedi, angolo, x_arrivo, dire, rimbalzo, min(angoli), max(angoli), partenza
 
 
 def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=True):
@@ -214,7 +226,8 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     altezze = {int(f): float(b[3] - b[1]) for f, b in zip(t["frame"], t["box"]) if np.isfinite(b[3] - b[1])}
     finestre = vu.finestre_colpi(classi, n)
 
-    campi_direzione = ("direzione", "angolo_gradi", "giocatore_x_m", "arrivo_x_m", "rimbalzo_x_m", "rimbalzo_y_m",
+    campi_direzione = ("direzione", "angolo_gradi", "giocatore_x_m", "partenza_da", "_partenza_x_m", "arrivo_x_m",
+                       "rimbalzo_x_m", "rimbalzo_y_m",
                        "contatto_x_m", "contatto_y_m", "contatto_z_m", "punti_usati", "errore_px", "_punti")
     for c in nascosti:
         fc = int(c["frame"])
@@ -248,7 +261,8 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             if verbose:
                 print(f"frame {fc} {c['colpo']}: direzione non affidabile o pallina non ritrovata dopo")
             continue
-        r, piedi, angolo, x_arr, dire, rimbalzo, a_min, a_max = m
+        r, piedi, angolo, x_arr, dire, rimbalzo, a_min, a_max, partenza = m
+        c.update({"partenza_da": partenza[1], "_partenza_x_m": round(partenza[0], 2)})
         if c["colpo"] == "servizio":
             c.update({"rimbalzo_x_m": round(float(rimbalzo[0]), 2), "rimbalzo_y_m": round(float(rimbalzo[1]), 2)})
         c.update({
@@ -266,6 +280,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             print(f"frame {fc} {c['colpo']}: {dire} (angolo {angolo:+.1f}, tra {a_min:+.1f} e {a_max:+.1f}), "
                   f"dai frame {fs[0]}-{fs[-1]}")
 
+    vu.aggiungi_soglie(colpi)
     with open(os.path.join(cartella_dati, nome + "_velocita.csv"), "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=vu.CAMPI, extrasaction="ignore")
         w.writeheader()

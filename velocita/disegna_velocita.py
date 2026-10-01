@@ -22,8 +22,9 @@ Cosa compare per ogni colpo:
 I pallini gialli sono i punti della pallina usati per il calcolo.
 
 La mappa in basso a sinistra: campo visto dall'alto, giocatore in basso. Pallino
-del colore del colpo = contatto; freccia = direzione (fino a 21 m; nel servizio
-fino al rimbalzo); fascia grigia = centro (terzo centrale del singolo); nel
+del colore del colpo = contatto; freccia = direzione, fino al punto del
+rimbalzo se e' stato trovato, altrimenti fino a 21 m (nel servizio fino al
+rimbalzo previsto); fascia grigia = centro (terzo centrale del singolo); nel
 servizio il riquadro diviso in tre, con la fascia colpita evidenziata.
 Pallino giallo bordato di nero = dove la pallina ha rimbalzato nel campo
 avversario (visto da TrackNet o trovato con il colore); cerchio giallo vuoto =
@@ -64,7 +65,8 @@ def etichetta(fr, righe, colore):
 
 
 def mappa(fr, colpo):
-    """Campo visto dall'alto (lato del giocatore in basso) con partenza e freccia verso l'arrivo."""
+    """Campo visto dall'alto (lato del giocatore in basso) con partenza e freccia fino al rimbalzo
+    trovato o, se non c'e', fino a 21 m (servizio: fino al rimbalzo previsto)."""
     m = 11                                     # pixel per metro
     w, h = int(13 * m), int(30.5 * m)          # da 5 m dietro il fondo vicino a 1,7 m oltre quello lontano
     img = np.full((h, w, 3), 35, np.uint8)
@@ -98,10 +100,20 @@ def mappa(fr, colpo):
         cv2.rectangle(ov, px(5.485 - fascia, 23.77), px(5.485 + fascia, 11.885), (120, 120, 120), -1)
         img = cv2.addWeighted(ov, 0.35, img, 0.65, 0)
         xa, ya = colpo["arrivo_x_m"], 21.0
-    xs, ys = colpo["contatto_x_m"], colpo["contatto_y_m"]
+    # la freccia parte dallo stesso punto usato per il lato di partenza (partenza_da)
+    xs, ys = colpo.get("_partenza_x_m", colpo["contatto_x_m"]), colpo["contatto_y_m"]
     col = COLORI.get(colpo["colpo"], (255, 255, 255))
     cv2.circle(img, px(xs, ys), 5, col, -1, cv2.LINE_AA)
-    cv2.arrowedLine(img, px(xs, ys), px(xa, ya), col, 2, cv2.LINE_AA, tipLength=0.08)
+    # la freccia arriva al punto del rimbalzo, se trovato; se no fino a 21 m (nel servizio al rimbalzo
+    # previsto). La punta si ferma sul bordo del pallino, cosi' si vedono tutti e due.
+    if trovato:
+        xf, yf = float(colpo["rimbalzo_trovato_x_m"]), float(colpo["rimbalzo_trovato_y_m"])
+        p0, p1 = np.array(px(xs, ys), float), np.array(px(xf, yf), float)
+        lung = np.linalg.norm(p1 - p0)
+        fine = tuple(int(round(v)) for v in (p1 - (p1 - p0) / lung * 7 if lung > 14 else p1))
+    else:
+        fine = px(xa, ya)
+    cv2.arrowedLine(img, px(xs, ys), fine, col, 2, cv2.LINE_AA, tipLength=0.08)
     if servizio and not trovato:
         cv2.circle(img, px(xa, ya), 4, (255, 255, 255), -1, cv2.LINE_AA)     # rimbalzo previsto
     if trovato:

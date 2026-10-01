@@ -38,8 +38,11 @@ Passi:
    e' una conversione con fotogrammi ripetuti (es. 50 -> 60 fps), si usano
    gli istanti veri dei fotogrammi (fotogrammi.py); altrimenti niente cambia.
 
-5. LUNGO LINEA / INCROCIATO / CENTRALE, dalla posizione del giocatore e da
-   dove arriverebbe la pallina nel campo avversario (vedi classifica_direzione).
+5. LUNGO LINEA / INCROCIATO / CENTRALE, da dove parte il colpo e da dove
+   arriverebbe la pallina nel campo avversario (vedi classifica_direzione).
+   La partenza e' il punto di contatto (vedi punto_di_partenza; colonna
+   partenza_da), non piu' i piedi. Le colonne soglia_sx_gradi e
+   soglia_dx_gradi dicono la stessa regola in gradi (vedi soglie_angolo).
    Per il servizio invece AL T / AL CORPO / ESTERNO, da dove cade il rimbalzo
    previsto nel riquadro del servizio (vedi classifica_servizio).
 
@@ -104,9 +107,19 @@ TOLLERANZA_PROFONDITA = 1.0 # contatto entro 1 m dalla distanza del giocatore
 # Direzione
 Y_ARRIVO = 21.0             # dove "arriva" la pallina: tra riga del servizio e fondo lontani (m)
 # "Centro" = terzo centrale del campo singolo (8,23 m diviso in tre fasce da 2,74 m): entro 1,37 m
-# dalla riga centrale, per la partenza e per l'arrivo, come le fasce del servizio. Con 1 m il dritto
-# 418 di alcaraz (piedi a 1,25 m dalla riga centrale, contatto sulla riga centrale) usciva "lungo linea".
+# dalla riga centrale, per la partenza e per l'arrivo, come le fasce del servizio. Piu' largo non
+# conviene: con 2 m, sui video di prova, dritti e rovesci tirati dall'angolo diventano "dal centro".
 FASCIA_CENTRO = (CENTRO_X - 1.37) / 3
+# Lato di partenza (dritti e rovesci): dal punto di contatto, non dai piedi. In ordine:
+#   1. "contatto": il punto di contatto del calcolo (impact_xyz_m), se il contatto e' stato visto;
+#   2. "traiettoria": i punti della pallina nel primo 1/6 di secondo dopo il contatto (10 frame a 60 fps,
+#      istanti veri nei video convertiti), prolungati all'indietro fino all'istante del contatto e portati
+#      alla profondita' del giocatore (almeno 3 punti);
+#   3. "piedi": come prima, se non c'e' altro.
+# Il servizio resta sui piedi: li' il lato decide il riquadro, cioe' dove sta chi serve.
+PARTENZA_S = 1 / 6
+PARTENZA_PUNTI_MIN = 3
+PARTENZA_DISTANZA_MAX = 2.5  # m: un punto di partenza piu' lontano dai piedi non e' credibile
 # Servizio: il riquadro (dalla riga centrale a quella del singolo, 4,115 m) diviso in
 # tre fasce uguali: al T (vicino alla riga centrale), al corpo, esterno.
 TERZO_RIQUADRO = (CENTRO_X - 1.37) / 3
@@ -210,8 +223,50 @@ def piedi_a_terra(t, f_contatto, cam):
     return ground_from_pixel(migliore, cam)[:2]
 
 
+def pixel_a_profondita(px, cam, y):
+    """Il punto della linea di vista del pixel px che sta alla profondita' y (m dal fondo del giocatore)."""
+    R, _ = cv2.Rodrigues(cam["rvec"])
+    C = -R.T @ cam["tvec"].ravel()
+    ray = R.T @ np.linalg.inv(cam["K"]) @ np.array([px[0], px[1], 1.0])
+    if abs(ray[1]) < 1e-9:
+        return None
+    s = (y - C[1]) / ray[1]
+    return None if s <= 0 else C + s * ray
+
+
+def partenza_da_traiettoria(t, punti, t_contatto, piedi, cam):
+    """
+    x di partenza dai punti della pallina nel primo 1/6 di secondo dopo il contatto (punti: frame -> pixel):
+    retta nel tempo per x e per y dell'immagine, riportata all'istante del contatto, e quel pixel portato
+    alla profondita' del giocatore. None se i punti sono meno di 3 o il risultato non e' credibile.
+    """
+    rip = None if t.get("tempi") is None else t["tempi"]["dup"]
+    fs = [f for f in sorted(punti) if t_contatto < istante(t, f) <= t_contatto + PARTENZA_S + 1e-6
+          and not (rip is not None and rip[int(f)])]
+    if len(fs) < PARTENZA_PUNTI_MIN:
+        return None
+    ts = np.array([istante(t, f) for f in fs])
+    px = [np.polyval(np.polyfit(ts, [punti[f][d] for f in fs], 1), t_contatto) for d in (0, 1)]
+    p = pixel_a_profondita(px, cam, float(piedi[1]))
+    if p is None or abs(p[0] - piedi[0]) > PARTENZA_DISTANZA_MAX:
+        return None
+    return float(p[0])
+
+
+def punto_di_partenza(t, cam, piedi, contatto=None, punti=None, t_contatto=None):
+    """(x di partenza, partenza_da): contatto del calcolo, poi traiettoria dopo il contatto, poi piedi."""
+    if contatto is not None:
+        return float(contatto[0]), "contatto"
+    if punti and t_contatto is not None:
+        x = partenza_da_traiettoria(t, punti, t_contatto, piedi, cam)
+        if x is not None:
+            return x, "traiettoria"
+    return float(piedi[0]), "piedi"
+
+
 def classifica_direzione(x_giocatore, contatto, v0):
-    """Lungo linea / incrociato / centrale da dove parte il giocatore e dove arriva la pallina."""
+    """Lungo linea / incrociato / centrale da dove parte il colpo (x_giocatore: x di partenza,
+    vedi punto_di_partenza) e dove arriva la pallina."""
     angolo = float(np.degrees(np.arctan2(v0[0], v0[1])))       # 0 = parallela alle righe laterali
     x_arrivo = contatto[0] + np.tan(np.radians(angolo)) * (Y_ARRIVO - contatto[1])
     lato_partenza = 0 if abs(x_giocatore - CENTRO_X) <= FASCIA_CENTRO else np.sign(x_giocatore - CENTRO_X)
@@ -225,6 +280,28 @@ def classifica_direzione(x_giocatore, contatto, v0):
     else:
         classe = "incrociato"
     return angolo, float(x_arrivo), classe
+
+
+def soglie_angolo(contatto):
+    """
+    Gli angoli (gradi) che separano le classi per un colpo che parte da contatto (x, y in m): le
+    direzioni dal contatto ai due confini del centro, a Y_ARRIVO. La pallina arriva al centro se
+    l'angolo e' tra soglia_sx e soglia_dx, a sinistra se e' sotto soglia_sx, a destra se e' sopra
+    soglia_dx. E' la stessa regola di classifica_direzione, scritta in gradi.
+    """
+    dy = Y_ARRIVO - contatto[1]
+    return (float(np.degrees(np.arctan2(CENTRO_X - FASCIA_CENTRO - contatto[0], dy))),
+            float(np.degrees(np.arctan2(CENTRO_X + FASCIA_CENTRO - contatto[0], dy))))
+
+
+def aggiungi_soglie(colpi):
+    """Colonne soglia_sx_gradi e soglia_dx_gradi per dritti e rovesci con una direzione (dal contatto della riga)."""
+    for c in colpi:
+        c.pop("soglia_sx_gradi", None), c.pop("soglia_dx_gradi", None)
+        if c.get("direzione") and c.get("colpo") != "servizio" and c.get("contatto_x_m", "") != "":
+            sx, dx = soglie_angolo((float(c["contatto_x_m"]), float(c["contatto_y_m"])))
+            c.update({"soglia_sx_gradi": round(sx, 1), "soglia_dx_gradi": round(dx, 1)})
+    return colpi
 
 
 def classifica_servizio(x_giocatore, rimbalzo):
@@ -280,7 +357,8 @@ def misura(t, traccia, f_contatto, cam):
     r = exit_speed(p_arr[tieni], f_fit, fps_fit, cam, int(tieni[:ci].sum()), impact_mode="visual", n_frames=n_fit,
                    player_ground_xy=piedi, return_debug=True, forward=True,
                    depth_tol=TOLLERANZA_PROFONDITA)
-    angolo, x_arrivo, direzione = classifica_direzione(piedi[0], r["impact_xyz_m"], r["v0_ms"])
+    r["_partenza"] = punto_di_partenza(t, cam, piedi, contatto=r["impact_xyz_m"])
+    angolo, x_arrivo, direzione = classifica_direzione(r["_partenza"][0], r["impact_xyz_m"], r["v0_ms"])
     # rimbalzo previsto (gravita' + aria, senza rotazione): usato solo per il servizio
     _, rimbalzo = ground_crossing(r["impact_xyz_m"], r["v0_ms"])
     usati = [f for f in fs if f_contatto < f <= f_contatto + n_dopo]
@@ -376,10 +454,13 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
                                  "nota": "misura scartata: " + "; ".join(motivi)})
                     colpi.append(riga)
                     continue
+                partenza = r["_partenza"]
                 if colpo == "servizio":
                     direzione = classifica_servizio(float(piedi[0]), rimbalzo)
+                    partenza = (float(piedi[0]), "piedi")
                     riga.update({"rimbalzo_x_m": round(float(rimbalzo[0]), 2),
                                  "rimbalzo_y_m": round(float(rimbalzo[1]), 2)})
+                riga.update({"partenza_da": partenza[1], "_partenza_x_m": round(partenza[0], 2)})
                 riga.update({
                     "velocita_uscita_kmh": round(r["exit_kmh"]),
                     "direzione": direzione,
@@ -459,9 +540,12 @@ def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam
             continue
         if controlla_risultato(r, angolo, colpo, altezza_img):
             continue
+        partenza = r["_partenza"]
         if colpo == "servizio":
             direzione = classifica_servizio(float(piedi[0]), rimbalzo)
+            partenza = (float(piedi[0]), "piedi")
             riga.update({"rimbalzo_x_m": round(float(rimbalzo[0]), 2), "rimbalzo_y_m": round(float(rimbalzo[1]), 2)})
+        riga.update({"partenza_da": partenza[1], "_partenza_x_m": round(partenza[0], 2)})
         riga.update({
             "direzione": direzione, "angolo_gradi": round(angolo, 1),
             "giocatore_x_m": round(float(piedi[0]), 2), "arrivo_x_m": round(x_arr, 2),
@@ -479,8 +563,8 @@ def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam
             print(f"  ricerca estesa: frame {fc} {colpo}, solo direzione: {direzione}")
 
 
-CAMPI = ["frame", "tempo_s", "colpo", "velocita_uscita_kmh", "velocita_rimbalzo_kmh", "direzione", "angolo_gradi", "giocatore_x_m",
-         "arrivo_x_m", "rimbalzo_x_m", "rimbalzo_y_m", "contatto_x_m", "contatto_y_m", "contatto_z_m",
+CAMPI = ["frame", "tempo_s", "colpo", "velocita_uscita_kmh", "velocita_rimbalzo_kmh", "direzione", "angolo_gradi",
+         "soglia_sx_gradi", "soglia_dx_gradi", "giocatore_x_m", "partenza_da", "arrivo_x_m", "rimbalzo_x_m", "rimbalzo_y_m", "contatto_x_m", "contatto_y_m", "contatto_z_m",
          "punti_usati", "errore_px", "calibrazione", "nota"]
 
 
@@ -491,6 +575,7 @@ def main():
     ap.add_argument("--calibrazione")
     a = ap.parse_args()
     nome, colpi = analizza(a.video, a.dati, a.calibrazione)
+    aggiungi_soglie(colpi)
     uscita = os.path.join(a.dati, nome + "_velocita.csv")
     with open(uscita, "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=CAMPI, extrasaction="ignore")

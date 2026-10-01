@@ -216,10 +216,33 @@ salvata, senza finestre (anche su Colab).
    - *dal centro verso destra/sinistra*: parte dal terzo centrale (entro
      1,37 m) e va verso un lato.
    Il "centro" e' quindi il terzo centrale del singolo, come le fasce del
-   servizio. Fino al 1/10 era 1 m: il dritto 418 di alcaraz (piedi 1,25 m a
-   sinistra della riga centrale, ma contatto praticamente sulla riga
-   centrale) usciva "lungo linea"; con i terzi esce "dal centro verso
-   sinistra", e sui quattro video di prova non cambia nient'altro.
+   servizio. Fino al 1/10 era 1 m. Piu' largo non conviene: con 2 m, sui
+   video di prova, dritti e rovesci tirati dall'angolo (alcaraz 577 e 1152)
+   diventano "dal centro".
+   **Da dove parte il colpo** (colonna `partenza_da`): dal 1/10 non piu' dai
+   piedi ma dal punto di contatto, in quest'ordine:
+   - `contatto`: il punto di contatto del calcolo, se il contatto si e' visto
+     (calcolo normale e ricerca estesa);
+   - `traiettoria`: se no, i punti della pallina nel primo 1/6 di secondo
+     dopo il contatto (10 frame a 60 fps, istanti veri nei video
+     convertiti, almeno 3), prolungati all'indietro fino all'istante del
+     contatto e portati alla profondita' del giocatore (scartato se a piu'
+     di 2,5 m dai piedi). Il contatto ipotizzato da `direzione_nascosta.py`
+     non conta come contatto visto;
+   - `piedi`: se non c'e' altro, come prima.
+   Il servizio parte sempre dai piedi: li' il lato decide il riquadro. Il
+   dritto 418 di alcaraz aveva i piedi 1,25 m a sinistra della riga
+   centrale ma il contatto praticamente sopra (x 5,41): ora esce "dal centro
+   verso sinistra" anche per questo. `giocatore_x_m` resta la posizione dei
+   piedi; la freccia della mappa parte dal punto di partenza.
+   **La stessa regola in gradi** (colonne `soglia_sx_gradi` e
+   `soglia_dx_gradi`): sono gli angoli dal punto di contatto ai due confini
+   del terzo centrale a 21 m. Se `angolo_gradi` e' tra le due soglie la
+   pallina arriva al centro, sotto `soglia_sx_gradi` a sinistra, sopra
+   `soglia_dx_gradi` a destra; con il lato di partenza si ha la classe.
+   Esempio: contatto 2,5 m a destra della riga centrale e 2 m dietro il
+   fondo: lungo linea sopra -2,8 gradi, centrale tra -9,6 e -2,8, incrociato
+   sotto -9,6.
    Per il servizio invece: *al T*, *al corpo* o *esterno*, secondo dove cade
    il rimbalzo previsto nel riquadro del servizio opposto (diviso in tre
    fasce uguali da 1,37 m, dalla riga centrale a quella del singolo). Entro
@@ -262,7 +285,8 @@ colpi ancora senza km/h. Quando la pallina e' mossa o coperta vicino al
 giocatore i punti subito dopo il colpo non sono buoni, ma spesso si vede dove
 la pallina rimbalza nel campo avversario: quel punto e' a terra, quindi con
 la calibrazione si sa esattamente dov'e'. Sapendo da dove parte la pallina
-(il giocatore, a 1 m d'altezza; 2,6 m nel servizio), dove arriva e in quanto
+(a 1 m d'altezza, 2,6 m nel servizio; di lato il punto di partenza, come nel
+punto 5 qui sopra), dove arriva e in quanto
 tempo, c'e' una sola traiettoria con gravita' e resistenza dell'aria (lo
 stesso modello del calcolo normale) che la spiega.
 
@@ -279,8 +303,8 @@ Nel CSV la stima va nella colonna `velocita_rimbalzo_kmh` (quella di
 `velocita_uscita_kmh` non viene mai toccata); sul video compare "circa ...
 km/h (dal rimbalzo)" con margine circa +-15%. Dove anche il calcolo normale
 funziona, i due metodi vanno abbastanza d'accordo: alcaraz, dritto al 275,
-138 km/h dal calcolo normale e 131 dal rimbalzo; Djokovic, dritto al 65, 123
-e 144 dal rimbalzo trovato con il colore (qui i passi 1-3 non trovano
+138 km/h dal calcolo normale e 130 dal rimbalzo; Djokovic, dritto al 65, 123
+e 145 dal rimbalzo trovato con il colore (qui i passi 1-3 non trovano
 l'inizio della traiettoria: TrackNet si interrompe al frame 99). Fino al 30/09,
 con il programma di allora, erano 132 e 128.
 Se TrackNet non vede il rimbalzo si provano altri due modi:
@@ -329,7 +353,10 @@ quelle del servizio, usate per la fascia.
 Sulla mappa del video: pallino giallo bordato di nero = rimbalzo visto
 (TrackNet o colore); cerchio giallo vuoto = rimbalzo ricostruito; pallino
 bianco = rimbalzo del servizio previsto dal calcolo, quando quello vero non
-si trova.
+si trova. La freccia parte dal contatto e arriva al pallino giallo quando il
+rimbalzo e' stato trovato; se no arriva fino a 21 m, il punto usato per la
+classe (nel servizio fino al rimbalzo previsto). La classe si calcola sempre
+come prima: cambia solo dove finisce la freccia.
 
 Controllo sui colpi con la velocita' misurata: il rimbalzo si trova in 3 su
 5 (alcaraz 275 e Djokovic 65 con TrackNet, swing_vision 412 con il colore) e
@@ -416,9 +443,9 @@ con il suo margine.
 | alcaraz | servizio | frame 141 | circa 166 km/h (dal rimbalzo) | al T |
 | alcaraz | dritto | frame 275 | 138 km/h | dal centro verso destra |
 | alcaraz | dritto | frame 418 | circa 149 km/h (rimbalzo trovato con il colore) | dal centro verso sinistra (prima dei terzi: lungo linea) |
-| alcaraz | dritto | frame 569 | circa 153 km/h (dal rimbalzo) | incrociato |
+| alcaraz | dritto | frame 569 | circa 152 km/h (dal rimbalzo) | incrociato |
 | alcaraz | dritto | frame 717 | circa 118 km/h (rimbalzo ricostruito) | lungo linea |
-| alcaraz | rovescio | frame 871 | circa 127 km/h (dal rimbalzo) | centrale |
+| alcaraz | rovescio | frame 871 | circa 128 km/h (dal rimbalzo) | centrale |
 | alcaraz | rovescio | frame 1017 | non disponibile (pallina coperta) | incrociato (direzione_nascosta.py) |
 | alcaraz | rovescio | frame 1168 | circa 152 km/h (dal rimbalzo) | lungo linea |
 
@@ -459,7 +486,7 @@ su altri.
   dopo il colpo non si misura bene (resta la direzione, e la stima dal
   rimbalzo quando si vede). Meglio girare con molta luce o a 120/240 fps.
 - La velocita' dal rimbalzo e' una stima (+-15%): contatto approssimato
-  (piedi del giocatore, altezza fissa), tempo di volo +-1 frame, rotazione
+  (profondita' dei piedi, altezza fissa), tempo di volo +-1 frame, rotazione
   non nel modello.
 - Il classificatore della posa a volte vede un servizio dove il giocatore
   cammina (alcaraz, frame 1302).

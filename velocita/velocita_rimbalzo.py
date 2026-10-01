@@ -15,8 +15,9 @@ L'idea. Quando la pallina e' mossa o coperta vicino al giocatore, il calcolo
 normale non ha punti buoni subito dopo il colpo. Ma spesso si vede dove la
 pallina rimbalza nel campo avversario, e quel punto e' a terra: con la
 calibrazione si sa esattamente dov'e' (non serve indovinare la distanza, come
-per i punti in volo). Sapendo da dove parte la pallina (il giocatore, a 1 m
-d'altezza; 2,6 m nel servizio), dove arriva (il rimbalzo) e quanto ci mette
+per i punti in volo). Sapendo da dove parte la pallina (a 1 m d'altezza; 2,6
+m nel servizio; di lato il punto di contatto, vedi partenza_stima), dove
+arriva (il rimbalzo) e quanto ci mette
 (i frame tra colpo e rimbalzo), c'e' una sola traiettoria con gravita' e
 resistenza dell'aria (lo stesso modello di rf_ball_exit_speed.py) che la
 spiega: la sua velocita' iniziale e' la velocita' d'uscita stimata.
@@ -75,8 +76,8 @@ Prove del rimbalzo ricostruito: nascondendo apposta il rimbalzo nei 5 colpi di
 alcaraz in cui si vede, in 4 la stima resta entro il 7%; nel quinto le curve
 passano a 102 px e il controllo la scarta.
 Prove: dove anche il calcolo normale funziona i due metodi vanno abbastanza
-d'accordo (alcaraz, dritto al 275: 138 km/h dal calcolo normale, 131 dal
-rimbalzo; Djokovic, dritto al 65: 123 e 144 con il colore, perche' i passi 1-3
+d'accordo (alcaraz, dritto al 275: 138 km/h dal calcolo normale, 130 dal
+rimbalzo; Djokovic, dritto al 65: 123 e 145 con il colore, perche' i passi 1-3
 non trovano l'inizio della traiettoria). Precisione attesa circa +-15%: il punto
 di contatto e' approssimato (piedi del giocatore e altezza fissa), il tempo di
 volo ha un errore di circa un frame, la rotazione non e' nel modello.
@@ -132,6 +133,19 @@ RIC_PUNTI = (5, 3)          # punti minimi prima (in discesa) e dopo (in risalit
 CAMPI_TROVATO = ["rimbalzo_trovato_x_m", "rimbalzo_trovato_y_m", "rimbalzo_trovato_frame", "rimbalzo_trovato_come"]
 _i = vu.CAMPI.index("rimbalzo_y_m") + 1
 CAMPI = vu.CAMPI[:_i] + CAMPI_TROVATO + vu.CAMPI[_i:]
+
+
+def partenza_stima(t, cam, riga, piedi, punti, t_contatto):
+    """
+    (x di partenza, partenza_da) per la stima dal rimbalzo. Il servizio parte dai piedi. Se la riga ha
+    un contatto visto dal calcolo (ricerca estesa, partenza_da = "contatto") si tiene quello; se no i
+    punti nel primo 1/6 s dopo il contatto (vu.punto_di_partenza); se no i piedi.
+    """
+    if riga["colpo"] == "servizio":
+        return float(piedi[0]), "piedi"
+    if riga.get("partenza_da") == "contatto" and riga.get("contatto_x_m") not in (None, ""):
+        return float(riga["contatto_x_m"]), "contatto"
+    return vu.punto_di_partenza(t, cam, piedi, punti=punti, t_contatto=t_contatto)
 
 
 def trova_rimbalzo(tn, da, a, cam):
@@ -205,7 +219,8 @@ def stima(t, tn, altezze, cam, riga):
         return None
     f_contatto = max(1, s - 1)
     piedi = vu.piedi_a_terra(t, f_contatto, cam)
-    p0 = np.array([piedi[0], piedi[1], ALTEZZA_CONTATTO.get(riga["colpo"], 1.0)])
+    x0, partenza_da = partenza_stima(t, cam, riga, piedi, {f: tn[f] for f in range(s, fb + 1) if f in tn}, t_contatto)
+    p0 = np.array([x0, piedi[1], ALTEZZA_CONTATTO.get(riga["colpo"], 1.0)])
     arrivo = np.array([terra[0], terra[1], 0.0])
     sol = least_squares(lambda v: calcolo.simulate(p0, v, np.array([volo]))[-1] - arrivo, (arrivo - p0) / volo)
     v0 = sol.x
@@ -214,9 +229,10 @@ def stima(t, tn, altezze, cam, riga):
     lo, hi = vu.VELOCITA_PLAUSIBILE
     if not lo <= kmh <= hi:
         return None
-    angolo, x_arrivo, direzione = vu.classifica_direzione(piedi[0], p0, v0)
+    angolo, x_arrivo, direzione = vu.classifica_direzione(x0, p0, v0)
     out = {"velocita_rimbalzo_kmh": round(kmh), "angolo_gradi": round(angolo, 1),
            "giocatore_x_m": round(float(piedi[0]), 2), "arrivo_x_m": round(x_arrivo, 2),
+           "partenza_da": partenza_da, "_partenza_x_m": round(x0, 2),
            "contatto_x_m": round(float(p0[0]), 2), "contatto_y_m": round(float(p0[1]), 2),
            "contatto_z_m": round(float(p0[2]), 2),
            "rimbalzo_x_m": round(float(terra[0]), 2), "rimbalzo_y_m": round(float(terra[1]), 2),
@@ -234,11 +250,11 @@ def stima(t, tn, altezze, cam, riga):
     return out
 
 
-def velocita_da_volo(t, cam, riga, f_c, t_rimbalzo, terra):
+def velocita_da_volo(t, cam, riga, f_c, t_rimbalzo, terra, punti=None):
     """
-    Il calcolo comune ai passi 4 e 5: partenza dal giocatore (piedi, a 1 m; 2,6 m nel servizio)
+    Il calcolo comune ai passi 4 e 5: partenza dal punto di partenza (partenza_stima; a 1 m, 2,6 m nel servizio)
     all'istante del contatto f_c (anche frazionario), arrivo al rimbalzo a terra all'istante
-    t_rimbalzo. (v0, km/h, media fino al rimbalzo, volo, piedi, p0) o None se il volo non e' plausibile.
+    t_rimbalzo. (v0, km/h, media fino al rimbalzo, volo, piedi, p0, partenza) o None se il volo non e' plausibile.
     """
     fps_vero = t["fps"] if t.get("tempi") is None else t["tempi"]["fps"]
     t_c = vu.istante(t, int(f_c)) + (f_c - int(f_c)) / fps_vero
@@ -246,7 +262,8 @@ def velocita_da_volo(t, cam, riga, f_c, t_rimbalzo, terra):
     if not VOLO_S[0] <= volo <= VOLO_S[1]:
         return None
     piedi = vu.piedi_a_terra(t, max(1, int(f_c)), cam)
-    p0 = np.array([piedi[0], piedi[1], ALTEZZA_CONTATTO.get(riga["colpo"], 1.0)])
+    partenza = partenza_stima(t, cam, riga, piedi, punti, t_c)
+    p0 = np.array([partenza[0], piedi[1], ALTEZZA_CONTATTO.get(riga["colpo"], 1.0)])
     arrivo = np.array([terra[0], terra[1], 0.0])
     v0 = least_squares(lambda v: calcolo.simulate(p0, v, np.array([volo]))[-1] - arrivo, (arrivo - p0) / volo).x
     kmh = float(np.linalg.norm(v0) * 3.6)
@@ -254,12 +271,12 @@ def velocita_da_volo(t, cam, riga, f_c, t_rimbalzo, terra):
     if not lo <= kmh <= hi:
         return None
     media = float(np.linalg.norm(arrivo[:2] - p0[:2]) / volo * 3.6)
-    return v0, kmh, media, volo, piedi, p0
+    return v0, kmh, media, volo, piedi, p0, partenza
 
 
-def riga_stima(riga, v0, kmh, piedi, p0, terra, punti, nota):
+def riga_stima(riga, v0, kmh, piedi, p0, terra, punti, nota, partenza):
     """Campi da aggiungere alla riga (come in stima)."""
-    angolo, x_arrivo, direzione = vu.classifica_direzione(piedi[0], p0, v0)
+    angolo, x_arrivo, direzione = vu.classifica_direzione(partenza[0], p0, v0)
     if riga["colpo"] == "servizio":
         direzione = vu.classifica_servizio(float(piedi[0]), terra)
     if riga.get("direzione") and riga["direzione"] != direzione:
@@ -268,6 +285,7 @@ def riga_stima(riga, v0, kmh, piedi, p0, terra, punti, nota):
         nota += f". Prima: {riga['nota']}"
     return {"velocita_rimbalzo_kmh": round(kmh), "angolo_gradi": round(angolo, 1), "direzione": direzione,
             "giocatore_x_m": round(float(piedi[0]), 2), "arrivo_x_m": round(x_arrivo, 2),
+            "partenza_da": partenza[1], "_partenza_x_m": round(partenza[0], 2),
             "contatto_x_m": round(float(p0[0]), 2), "contatto_y_m": round(float(p0[1]), 2),
             "contatto_z_m": round(float(p0[2]), 2),
             "rimbalzo_x_m": round(float(terra[0]), 2), "rimbalzo_y_m": round(float(terra[1]), 2),
@@ -353,15 +371,16 @@ def stima_colore(t, tn, altezze, cam, riga, video, cap, scala, usati):
         f_c = inizio_traiettoria(est, fb, limite, altezze, ripetuti) - 0.5
     if abs(f_c - fc) > PRIMA_S or f_c >= fb:
         return None
-    r = velocita_da_volo(t, cam, riga, f_c, vu.istante(t, fb), terra)
+    r = velocita_da_volo(t, cam, riga, f_c, vu.istante(t, fb), terra,
+                         {f: est[f] for f in range(int(np.ceil(f_c)), fb + 1) if f in est})
     if r is None:
         return None
-    v0, kmh, media, volo, piedi, p0 = r
+    v0, kmh, media, volo, piedi, p0, partenza = r
     nota = (f"{NOTA_RIMBALZO}, trovato con il colore nel campo lontano (margine circa +-15%): contatto ~frame "
             f"{f_c:.0f}, rimbalzo al frame {fb} a ({terra[0]:.1f}; {terra[1]:.1f}) m, volo {volo:.2f} s, "
             f"media fino al rimbalzo {media:.0f} km/h, {len(aggiunti)} punti aggiunti dal colore")
     punti = [(f, float(est[f][0]), float(est[f][1])) for f in range(int(np.ceil(f_c)), fb + 1) if f in est]
-    return riga_stima(riga, v0, kmh, piedi, p0, terra, punti, nota), fb
+    return riga_stima(riga, v0, kmh, piedi, p0, terra, punti, nota, partenza), fb
 
 
 # ------------------------------------------------------------------ passo 5
@@ -418,17 +437,17 @@ def stima_ricostruita(t, tn, cam, riga, altezza_img, usati):
         return None
     fps_vero = t["fps"] if t.get("tempi") is None else t["tempi"]["fps"]
     fb = a + int(round((r["t"] - vu.istante(t, a)) * fps_vero))
-    v = velocita_da_volo(t, cam, riga, fc, r["t"], r["terra"])
+    v = velocita_da_volo(t, cam, riga, fc, r["t"], r["terra"], tn)
     if v is None:
         return None
-    v0, kmh, media, volo, piedi, p0 = v
+    v0, kmh, media, volo, piedi, p0, partenza = v
     terra = r["terra"]
     nota = (f"{NOTA_RICOSTRUITO} (margine circa +-20%): rimbalzo coperto tra i frame {a} e {b}, ricostruito "
             f"(rimbalzo al frame {fb}) a ({terra[0]:.1f}; {terra[1]:.1f}) m, curve a "
             f"{r['scarto'] * 1080 / altezza_img:.0f} px (1080p), contatto ~frame {fc:.0f}, volo {volo:.2f} s, "
             f"media fino al rimbalzo {media:.0f} km/h")
     punti = [(f, float(tn[f][0]), float(tn[f][1])) for f in r["punti"]]
-    return riga_stima(riga, v0, kmh, piedi, p0, terra, punti, nota), fb
+    return riga_stima(riga, v0, kmh, piedi, p0, terra, punti, nota, partenza), fb
 
 
 # ------------------------------------------------------------------ passo 6
@@ -463,7 +482,7 @@ def rimbalzo_dopo_colpo(t, tn, cam, riga, video, cap, scala, altezza_img, usati)
 def direzione_dal_rimbalzo(riga, x, y):
     """La direzione che darebbe il rimbalzo trovato (stesse regole di velocita_uscita.py), o None."""
     try:
-        xg = float(riga["giocatore_x_m"])
+        xg = float(riga.get("_partenza_x_m", riga["giocatore_x_m"]))
     except (KeyError, TypeError, ValueError):
         return None
     if riga["colpo"] == "servizio":
@@ -567,6 +586,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             print(f"frame {c['frame']} {c['colpo']}: punto del rimbalzo ({x:.1f}; {y:.1f}) m, frame {fb} ({come})"
                   + (f", darebbe \"{d}\"" if d and d != c["direzione"] else ""))
     cap.release()
+    vu.aggiungi_soglie(colpi)
     with open(os.path.join(cartella_dati, nome + "_velocita.csv"), "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=CAMPI, extrasaction="ignore")
         w.writeheader()
