@@ -43,9 +43,11 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
   dopo. Non tocca la velocita'.
 - `velocita_rimbalzo.py` - per i colpi rimasti senza km/h: velocita' STIMATA
   dal rimbalzo nel campo avversario, quando si vede. Va in una colonna a
-  parte e sul video compare come "circa ... km/h (dal rimbalzo)".
+  parte e sul video compare come "circa ... km/h (dal rimbalzo)". Per tutti
+  gli altri colpi con una direzione cerca solo il punto del rimbalzo, per la
+  mappa.
 - `disegna_velocita.py` - riscrive il video con colpo, km/h, direzione e una
-  piccola mappa del campo.
+  piccola mappa del campo, con il punto in cui la pallina rimbalza.
 - `calibrazioni/` - `standard.json`, la calibrazione standard, e quelle dei
   singoli video: `<video>.json` e `<video>_campo.jpg`, l'immagine di
   controllo (resta sul PC). Il JSON di un video viene copiato anche su Drive
@@ -209,9 +211,15 @@ salvata, senza finestre (anche su Colab).
    lontani) per vedere in che meta' arriva:
    - *lungo linea*: parte da un lato e arriva sulla meta' dello stesso lato;
    - *incrociato*: arriva sulla meta' opposta;
-   - *centrale*: arriva entro 1 m dalla riga centrale;
-   - *dal centro verso destra/sinistra*: parte dal centro (entro 1 m) e va
-     verso un lato.
+   - *centrale*: arriva nel terzo centrale del campo singolo, cioe' entro
+     1,37 m dalla riga centrale;
+   - *dal centro verso destra/sinistra*: parte dal terzo centrale (entro
+     1,37 m) e va verso un lato.
+   Il "centro" e' quindi il terzo centrale del singolo, come le fasce del
+   servizio. Fino al 1/10 era 1 m: il dritto 418 di alcaraz (piedi 1,25 m a
+   sinistra della riga centrale, ma contatto praticamente sulla riga
+   centrale) usciva "lungo linea"; con i terzi esce "dal centro verso
+   sinistra", e sui quattro video di prova non cambia nient'altro.
    Per il servizio invece: *al T*, *al corpo* o *esterno*, secondo dove cade
    il rimbalzo previsto nel riquadro del servizio opposto (diviso in tre
    fasce uguali da 1,37 m, dalla riga centrale a quella del singolo). Entro
@@ -270,10 +278,69 @@ stesso modello del calcolo normale) che la spiega.
 Nel CSV la stima va nella colonna `velocita_rimbalzo_kmh` (quella di
 `velocita_uscita_kmh` non viene mai toccata); sul video compare "circa ...
 km/h (dal rimbalzo)" con margine circa +-15%. Dove anche il calcolo normale
-funziona, i due metodi vanno d'accordo: Djokovic, dritto al 65, 123 km/h dal
-calcolo normale e 132 dal rimbalzo; alcaraz, dritto al 275, 138 e 128.
-Limite: spesso il rimbalzo non si vede (rete, testa del giocatore,
-avversario); allora non si stima niente.
+funziona, i due metodi vanno abbastanza d'accordo: alcaraz, dritto al 275,
+138 km/h dal calcolo normale e 131 dal rimbalzo; Djokovic, dritto al 65, 123
+e 144 dal rimbalzo trovato con il colore (qui i passi 1-3 non trovano
+l'inizio della traiettoria: TrackNet si interrompe al frame 99). Fino al 30/09,
+con il programma di allora, erano 132 e 128.
+Se TrackNet non vede il rimbalzo si provano altri due modi:
+
+4. Colore nel campo lontano: nei fotogrammi dopo il colpo in cui TrackNet ha
+   perso la pallina si cercano macchie gialle piccole (3-120 px quadrati a
+   1080p) vicino all'ultima posizione nota, in un raggio di 12 px piu' 8 px per
+   ogni fotogramma di buco, ignorando il giallo fermo. Sulla traccia
+   completata si rifanno i passi 1-3 (margine circa +-15%). Con il contatto
+   coperto, il contatto e' a meta' del tratto coperto.
+5. Rimbalzo ricostruito: se il rimbalzo e' coperto (testa del giocatore,
+   rete, avversario) ma la pallina si vede scendere prima e risalire dopo,
+   con un buco di 4-20 fotogrammi, due curve adattate ai punti prima (almeno
+   5) e dopo (almeno 3) si prolungano nel buco: il rimbalzo e' dove si
+   incontrano. Se passano a piu' di 20 px (su 1080) i punti dopo non sono la
+   stessa pallina e non si stima niente. Sul video compare "circa ... km/h
+   (rimbalzo ricostruito)", margine circa +-20%.
+
+Un rimbalzo non vale per due colpi. Prova del rimbalzo ricostruito:
+nascondendo apposta il rimbalzo nei 5 colpi di alcaraz in cui si vede, in 4
+la stima resta entro il 7%; nel quinto le curve passano a 102 px e il
+controllo la scarta. Sui quattro video di prova i due modi aggiungono tre
+velocita': alcaraz dritto al 418, circa 149 km/h (colore); alcaraz dritto al
+709, circa 118 km/h (ricostruito); swing_vision rovescio al 553, circa 120
+km/h (colore). Tutti gli altri colpi restano identici.
+Limite: se la pallina non si vede ne' al rimbalzo ne' prima e dopo, non si
+stima niente (alcaraz, rovescio al 1015: l'avversario la ribatte prima che
+rimbalzi in vista).
+
+### Il punto del rimbalzo sulla mappa (1 ottobre)
+
+6. Per tutti gli altri colpi con una direzione (velocita' misurata, solo
+   direzione, contatto coperto) si cerca solo dove la pallina rimbalza nel
+   campo avversario, nei 1,6 s dopo il colpo (dopo la ricomparsa se il
+   contatto era coperto), con gli stessi tre modi: TrackNet, colore,
+   ricostruito. Non cambia ne' la velocita' ne' la direzione: serve per la
+   mappa e come controllo. Se la direzione che darebbe il rimbalzo e'
+   diversa da quella scritta, la nota lo dice ("il rimbalzo trovato ...
+   darebbe ...").
+
+Il rimbalzo trovato (passi 1-6) e' nelle colonne `rimbalzo_trovato_x_m`,
+`rimbalzo_trovato_y_m`, `rimbalzo_trovato_frame` e `rimbalzo_trovato_come`
+(tracknet, colore, ricostruito). `rimbalzo_x_m` e `rimbalzo_y_m` restano
+quelle del servizio, usate per la fascia.
+
+Sulla mappa del video: pallino giallo bordato di nero = rimbalzo visto
+(TrackNet o colore); cerchio giallo vuoto = rimbalzo ricostruito; pallino
+bianco = rimbalzo del servizio previsto dal calcolo, quando quello vero non
+si trova.
+
+Controllo sui colpi con la velocita' misurata: il rimbalzo si trova in 3 su
+5 (alcaraz 275 e Djokovic 65 con TrackNet, swing_vision 412 con il colore) e
+in tutti e 3 la direzione che darebbe e' la stessa del calcolo normale
+(Djokovic 65: -5,1 gradi dal rimbalzo, -5,6 dal calcolo normale). Non si
+trova nel servizio di Nicola (TrackNet perde la pallina prima del rimbalzo)
+e nel rovescio di Djokovic al 217 (il video finisce prima). Su alcaraz il
+punto c'e' in 7 colpi su 8; manca solo nel rovescio al 1015.
+Tempo: il colore costa circa 15 s a colpo su un video 4K, quasi tutti per il
+giallo fermo. I fotogrammi ora si leggono in fila invece che a salti: stessi
+risultati, da circa 50 a 15 s a colpo in 4K.
 
 ## Colpi con il contatto nascosto: solo la direzione
 
@@ -344,12 +411,13 @@ con il suo margine.
 | zverev_djokovic_trim_swin_like | dritto | frame 65 | 123 km/h | centrale |
 | zverev_djokovic_trim_swin_like | rovescio | frame 217 | 114 km/h | centrale |
 | swing_vision_test1_trim | dritto | frame 412 | 90 km/h | dal centro verso destra |
-| swing_vision_test1_trim | servizio, rovescio | frame 302, 553 | non disponibile (pallina mossa) | esterno, centrale (solo direzione) |
+| swing_vision_test1_trim | servizio | frame 302 | non disponibile (pallina mossa) | esterno (solo direzione) |
+| swing_vision_test1_trim | rovescio | frame 553 | circa 120 km/h (rimbalzo trovato con il colore) | centrale |
 | alcaraz | servizio | frame 141 | circa 166 km/h (dal rimbalzo) | al T |
 | alcaraz | dritto | frame 275 | 138 km/h | dal centro verso destra |
-| alcaraz | dritto | frame 418 | non disponibile (pallina mossa) | lungo linea (solo direzione) |
+| alcaraz | dritto | frame 418 | circa 149 km/h (rimbalzo trovato con il colore) | dal centro verso sinistra (prima dei terzi: lungo linea) |
 | alcaraz | dritto | frame 569 | circa 153 km/h (dal rimbalzo) | incrociato |
-| alcaraz | dritto | frame 717 | non disponibile (pallina coperta) | lungo linea (direzione_nascosta.py) |
+| alcaraz | dritto | frame 717 | circa 118 km/h (rimbalzo ricostruito) | lungo linea |
 | alcaraz | rovescio | frame 871 | circa 127 km/h (dal rimbalzo) | centrale |
 | alcaraz | rovescio | frame 1017 | non disponibile (pallina coperta) | incrociato (direzione_nascosta.py) |
 | alcaraz | rovescio | frame 1168 | circa 152 km/h (dal rimbalzo) | lungo linea |
@@ -397,6 +465,14 @@ su altri.
   cammina (alcaraz, frame 1302).
 - Il servizio in slice o in kick curva di lato: la rotazione non e' nel
   modello, quindi il rimbalzo vero puo' spostarsi rispetto a quello previsto.
+- Con il telefono all'altezza standard (circa 2,2 m) tutto il campo lontano
+  si vede attraverso la rete, e la fascia bianca in cima alla rete copre una
+  striscia di terreno subito dietro la riga di fondo lontana: i rimbalzi li'
+  non si vedono, e attraverso le maglie TrackNet perde spesso la pallina.
+  Esempio: alcaraz, rovescio al 1015/1017, rimbalzo e risposta
+  dell'avversario dietro la fascia bianca (fotogrammi 1070-1071). Per vedere
+  la riga di fondo lontana sopra la rete il telefono dovrebbe stare ad almeno
+  circa 2,4 m.
 - Da fare: avviso automatico quando le righe del campo non coincidono con la
   calibrazione standard, rilevamento del rimbalzo come vincolo, dimensione
   apparente della pallina come misura di distanza, audio, rotazione nel

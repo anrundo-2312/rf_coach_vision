@@ -103,7 +103,10 @@ TOLLERANZA_PROFONDITA = 1.0 # contatto entro 1 m dalla distanza del giocatore
 
 # Direzione
 Y_ARRIVO = 21.0             # dove "arriva" la pallina: tra riga del servizio e fondo lontani (m)
-FASCIA_CENTRO = 1.0         # +- metri attorno alla riga centrale considerati "centro"
+# "Centro" = terzo centrale del campo singolo (8,23 m diviso in tre fasce da 2,74 m): entro 1,37 m
+# dalla riga centrale, per la partenza e per l'arrivo, come le fasce del servizio. Con 1 m il dritto
+# 418 di alcaraz (piedi a 1,25 m dalla riga centrale, contatto sulla riga centrale) usciva "lungo linea".
+FASCIA_CENTRO = (CENTRO_X - 1.37) / 3
 # Servizio: il riquadro (dalla riga centrale a quella del singolo, 4,115 m) diviso in
 # tre fasce uguali: al T (vicino alla riga centrale), al corpo, esterno.
 TERZO_RIQUADRO = (CENTRO_X - 1.37) / 3

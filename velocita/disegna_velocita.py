@@ -14,10 +14,21 @@ Cosa compare per ogni colpo:
   - "uscita X km/h": velocita' misurata subito dopo il colpo (velocita_uscita.py);
   - "circa X km/h (dal rimbalzo)": stimata dal rimbalzo nel campo avversario
     (velocita_rimbalzo.py), meno precisa: margine circa +-15%;
+  - "circa X km/h (rimbalzo ricostruito)": il rimbalzo era coperto ed e' stato
+    ricostruito dalle curve prima e dopo (velocita_rimbalzo.py): margine circa +-20%;
   - "km/h non disponibile" con la direzione: la velocita' non si puo' misurare
     (pallina coperta o mossa al colpo) ma la direzione si';
   - "km/h non disponibile" in grigio: niente di affidabile.
 I pallini gialli sono i punti della pallina usati per il calcolo.
+
+La mappa in basso a sinistra: campo visto dall'alto, giocatore in basso. Pallino
+del colore del colpo = contatto; freccia = direzione (fino a 21 m; nel servizio
+fino al rimbalzo); fascia grigia = centro (terzo centrale del singolo); nel
+servizio il riquadro diviso in tre, con la fascia colpita evidenziata.
+Pallino giallo bordato di nero = dove la pallina ha rimbalzato nel campo
+avversario (visto da TrackNet o trovato con il colore); cerchio giallo vuoto =
+rimbalzo ricostruito (era coperto); pallino bianco = rimbalzo del servizio
+previsto dal calcolo, quando quello vero non si trova.
 """
 
 import argparse
@@ -32,6 +43,7 @@ DURATA_S = 1.7                 # quanto resta la scritta dopo il contatto
 LARGHEZZA_MAX = 1920
 COLORI = {"dritto": (60, 200, 60), "rovescio": (255, 170, 60), "servizio": (0, 200, 255)}
 F = cv2.FONT_HERSHEY_SIMPLEX
+GIALLO = (0, 230, 255)         # come i pallini dei punti usati
 
 
 def etichetta(fr, righe, colore):
@@ -63,6 +75,7 @@ def mappa(fr, colpo):
                  ((1.37, 5.485), (9.60, 5.485)), ((1.37, 18.285), (9.60, 18.285)), ((5.485, 5.485), (5.485, 18.285))]:
         cv2.line(img, px(*a), px(*b), bianco, 1, cv2.LINE_AA)
     cv2.line(img, px(-0.9, 11.885), px(11.9, 11.885), (0, 200, 255), 2)
+    trovato = colpo.get("rimbalzo_trovato_x_m") not in (None, "")
     servizio = colpo["colpo"] == "servizio" and "rimbalzo_x_m" in colpo
     if servizio:
         # riquadro del servizio diviso in tre: al T, al corpo, esterno
@@ -81,15 +94,25 @@ def mappa(fr, colpo):
     else:
         # fascia "centrale" nel campo avversario
         ov = img.copy()
-        cv2.rectangle(ov, px(5.485 - 1.0, 23.77), px(5.485 + 1.0, 11.885), (120, 120, 120), -1)
+        fascia = (5.485 - 1.37) / 3       # terzo centrale del singolo, come FASCIA_CENTRO in velocita_uscita.py
+        cv2.rectangle(ov, px(5.485 - fascia, 23.77), px(5.485 + fascia, 11.885), (120, 120, 120), -1)
         img = cv2.addWeighted(ov, 0.35, img, 0.65, 0)
         xa, ya = colpo["arrivo_x_m"], 21.0
     xs, ys = colpo["contatto_x_m"], colpo["contatto_y_m"]
     col = COLORI.get(colpo["colpo"], (255, 255, 255))
     cv2.circle(img, px(xs, ys), 5, col, -1, cv2.LINE_AA)
     cv2.arrowedLine(img, px(xs, ys), px(xa, ya), col, 2, cv2.LINE_AA, tipLength=0.08)
-    if servizio:
+    if servizio and not trovato:
         cv2.circle(img, px(xa, ya), 4, (255, 255, 255), -1, cv2.LINE_AA)     # rimbalzo previsto
+    if trovato:
+        # dove la pallina ha rimbalzato davvero: pieno se visto, vuoto se ricostruito
+        pb = px(float(colpo["rimbalzo_trovato_x_m"]), float(colpo["rimbalzo_trovato_y_m"]))
+        if colpo.get("rimbalzo_trovato_come") == "ricostruito":
+            cv2.circle(img, pb, 6, (0, 0, 0), 4, cv2.LINE_AA)
+            cv2.circle(img, pb, 6, GIALLO, 2, cv2.LINE_AA)
+        else:
+            cv2.circle(img, pb, 7, (0, 0, 0), -1, cv2.LINE_AA)
+            cv2.circle(img, pb, 5, GIALLO, -1, cv2.LINE_AA)
     H, W = fr.shape[:2]
     s = H / 1080
     img = cv2.resize(img, None, fx=s, fy=s)
@@ -142,8 +165,13 @@ def main():
                     mappa(fr, c)
             elif c.get("velocita_rimbalzo_kmh", "") != "":
                 # stima dal rimbalzo nel campo avversario (velocita_rimbalzo.py)
-                etichetta(fr, [c["colpo"].upper(), f"circa {c['velocita_rimbalzo_kmh']} km/h (dal rimbalzo)",
-                               c["direzione"], "stima dal rimbalzo: margine circa +-15%"], colore)
+                if str(c.get("nota", "")).startswith("velocita' stimata dal rimbalzo ricostruito"):
+                    righe = [c["colpo"].upper(), f"circa {c['velocita_rimbalzo_kmh']} km/h (rimbalzo ricostruito)",
+                             c["direzione"], "rimbalzo coperto, ricostruito: margine circa +-20%"]
+                else:
+                    righe = [c["colpo"].upper(), f"circa {c['velocita_rimbalzo_kmh']} km/h (dal rimbalzo)",
+                             c["direzione"], "stima dal rimbalzo: margine circa +-15%"]
+                etichetta(fr, righe, colore)
                 mappa(fr, c)
             elif c.get("direzione"):
                 # niente km/h, ma la direzione (direzione_nascosta.py o ricerca estesa)

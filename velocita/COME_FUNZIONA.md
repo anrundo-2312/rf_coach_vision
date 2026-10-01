@@ -324,10 +324,10 @@ I passaggi che nelle prime prove facevo a mano ora li fa `velocita/velocita_usci
 3. **Contatto.** Cambio brusco della direzione della pallina, con la pallina vicina a un polso. Serve anche un'altra condizione: subito dopo, la pallina deve allontanarsi abbastanza veloce nell'immagine (almeno 2,4 altezze del giocatore al secondo). È quella che scarta il rimbalzo della pallina dell'avversario davanti al giocatore: dopo quel rimbalzo la pallina continua ad arrivare lentamente.
 4. **Velocità**, come nel paragrafo 4, con `forward` e `depth_tol=1.0`. La posizione a terra del giocatore si prende nel frame, fra i 20 prima del contatto, in cui i piedi sono più in basso nell'immagine: nel servizio, al contatto, il giocatore è in aria.
 5. **Direzione.** Dalla velocità 3D si ricava l'angolo della pallina rispetto alle righe laterali (0° = parallela). Nelle simulazioni l'angolo è molto più preciso della velocità: ±1° con TrackNet preciso, ±2–3° con TrackNet meno preciso, anche con il topspin. L'errore del metodo sta soprattutto nella *distanza* della pallina, che cambia la velocità ma poco la direzione.
-6. **Lungo linea, incrociato, centrale.** Si guarda da dove parte il giocatore (a sinistra, al centro o a destra della riga centrale, con ±1 m di margine per il centro) e dove arriverebbe la pallina, prolungando la direzione fino a 21 m, tra riga del servizio e fondo lontani:
+6. **Lungo linea, incrociato, centrale.** Si guarda da dove parte il giocatore (a sinistra, al centro o a destra della riga centrale; il centro è il terzo centrale del campo singolo, entro 1,37 m dalla riga centrale, vedi 8.5) e dove arriverebbe la pallina, prolungando la direzione fino a 21 m, tra riga del servizio e fondo lontani:
    - lungo linea: parte da un lato e arriva sulla metà dello stesso lato;
    - incrociato: arriva sulla metà opposta;
-   - centrale: arriva entro 1 m dalla riga centrale;
+   - centrale: arriva entro 1,37 m dalla riga centrale (terzo centrale del singolo);
    - dal centro verso destra o sinistra: parte dal centro e va verso un lato.
 
    Ragionare su dove arriva la pallina, invece che solo sui gradi, evita di chiamare "lungo linea" un colpo dritto tirato dal centro del campo.
@@ -404,7 +404,37 @@ Per misurare i miglioramenti ho fatto una scheda: gli 8 colpi veri con il contat
 
 Direzioni 8 su 8, tutte uguali a quelle della scheda. Velocità: 1 misurata e 4 stimate dal rimbalzo. Nicola e Djokovic restano identici; su swing_vision il dritto resta 90 km/h e compaiono la direzione del servizio (esterno) e un rovescio che prima mancava (centrale), senza km/h.
 
-### 8.4 Cosa ho provato e scartato
+### 8.4 Dopo: colore nel campo lontano e rimbalzo ricostruito (1° ottobre)
+
+Restavano 3 colpi senza km/h perché il rimbalzo non si vedeva in TrackNet. Due modi nuovi, provati prima come prototipi e poi messi in `velocita_rimbalzo.py` (passi 4 e 5):
+
+- **Colore nel campo lontano.** Nel dritto al 418/419 TrackNet perde la pallina per 30 fotogrammi proprio prima del rimbalzo, ma a occhio si vede, attraverso le maglie della rete. Nei fotogrammi in cui TrackNet l'ha persa si cercano macchie gialle piccole (3-120 px quadrati a 1080p, la pallina lontana è un puntino) vicino all'ultima posizione nota, in un raggio che parte da 12 px e cresce di 8 px per ogni fotogramma di buco, ignorando il giallo fermo. Sulla traccia completata si rifà la ricerca del rimbalzo. Risultato: rimbalzo a (2,9; 24,5) m, circa 149 km/h, lungo linea (con la regola di allora; con i terzi è "dal centro verso sinistra", vedi 8.5).
+- **Rimbalzo ricostruito.** Nel dritto al 709/717 il rimbalzo è coperto dalla testa del giocatore, ma la pallina si vede scendere prima e risalire dopo. Si adattano due curve ai punti prima (almeno 5, in discesa) e dopo (almeno 3, in risalita) e si cerca dove si incontrano, se il buco è tra 4 e 20 fotogrammi. Se le curve passano a più di 20 px (su 1080) i punti dopo non sono la stessa pallina (per esempio è già la risposta dell'avversario). Contatto: il frame della riga, o la metà del tratto coperto se il contatto era coperto. Risultato: rimbalzo a (8,0; 20,6) m, curve a 6 px, circa 118 km/h, lungo linea. Prova: nascondendo apposta il rimbalzo nei 5 colpi in cui si vede, in 4 la stima resta entro il 7% (157 contro 166, 133 contro 131, 137 contro 148, 144 contro 152 km/h); nel quinto le curve passano a 102 px e il controllo lo scarta.
+
+Prova A/B sui quattro video: cambiano solo tre righe, alcaraz 418 (circa 149 km/h, colore), alcaraz 709 (circa 118 km/h, ricostruito) e swing_vision 553 (circa 120 km/h, colore); tutto il resto è identico. Su alcaraz ora le velocità sono 1 misurata e 6 stimate dal rimbalzo; resta senza km/h il rovescio al 1015/1017, dove l'avversario ribatte la pallina prima che rimbalzi in vista.
+
+### 8.5 Direzione: il centro diventa il terzo centrale del campo (1° ottobre)
+
+Il dritto al 418/419 usciva "lungo linea", ma a vederlo la pallina parte dal centro e va verso sinistra. La misura era giusta (tre metodi diversi mettono l'arrivo 2,4-2,6 m a sinistra della riga centrale); era la regola a dargli il nome sbagliato:
+
+- la partenza si misura dai piedi: Alcaraz aveva i piedi a x 4,24 (1,25 m a sinistra della riga centrale), ma nel dritto la racchetta colpisce lontano dal corpo e il contatto era a x 5,41, praticamente sulla riga centrale;
+- con un centro di ±1 m bastavano 25 cm per passare da "dal centro" a "da sinistra".
+
+Ora il centro è il terzo centrale del campo singolo, entro 1,37 m dalla riga centrale (`FASCIA_CENTRO = (CENTRO_X - 1.37) / 3`, la stessa misura delle fasce del servizio), per la partenza e per l'arrivo. Il 418 diventa "dal centro verso sinistra". Prova A/B sui quattro video: cambia solo quella riga. Ho provato anche a misurare la partenza dal punto di contatto invece che dai piedi: nelle stime dal rimbalzo il contatto non si misura (si usano i piedi), quindi il 418 non cambiava, mentre il rovescio di Nicola diventava "lungo linea"; scartato.
+
+Sulla mappa del video la fascia grigia del centro è ora larga 2,74 m.
+
+### 8.6 Il punto del rimbalzo sulla mappa (1° ottobre)
+
+Sulla mappa del video ora compare anche dove la pallina rimbalza nel campo avversario: pallino giallo bordato di nero se il rimbalzo si vede (TrackNet o colore), cerchio giallo vuoto se è ricostruito. Per i colpi stimati dal rimbalzo (passi 1-5) il punto c'era già; per tutti gli altri colpi con una direzione `velocita_rimbalzo.py` lo cerca con un passo nuovo (passo 6): nei 1,6 s dopo il colpo, con TrackNet, poi il colore nel campo lontano, poi il rimbalzo ricostruito. Il passo 6 non cambia né la velocità né la direzione: dà il punto e un controllo, e se la direzione che darebbe il rimbalzo è diversa la nota lo dice. Colonne nuove: `rimbalzo_trovato_x_m`, `rimbalzo_trovato_y_m`, `rimbalzo_trovato_frame`, `rimbalzo_trovato_come`.
+
+Controllo sui colpi con la velocità misurata: il rimbalzo si trova in 3 su 5 (alcaraz 275 e Djokovic 65 con TrackNet, swing_vision 412 con il colore) e in tutti e 3 la direzione è la stessa del calcolo normale. Su swing_vision 412 il punto cade dove nell'immagine si vede rimbalzare la pallina, a destra del centro. Prova A/B sui quattro video: le colonne di prima restano identiche, cambiano solo le colonne nuove.
+
+Per il tempo: la ricerca col colore leggeva ogni fotogramma con un salto (circa 0,5 s a fotogramma in 4K); ora legge in fila (0,02 s). Stessi risultati, da circa 50 a 15 s a colpo in 4K; il resto è il calcolo del giallo fermo.
+
+Nota: con il programma di oggi i confronti tra le due velocità dove funzionano entrambe sono alcaraz 275: 138 misurati e 131 dal rimbalzo; Djokovic 65: 123 e 144 dal rimbalzo trovato col colore (i passi 1-3 non trovano più l'inizio della traiettoria). I 132 e 128 del paragrafo 8.2 erano del programma del 30/09.
+
+### 8.7 Cosa ho provato e scartato
 
 - **Ripartire a cercare la pallina dopo 8 frame vuoti** invece di arrendersi: rompeva il rovescio di Nicola.
 - **Usare la ricerca estesa anche per i km/h**: velocità troppo basse (vedi sopra).
