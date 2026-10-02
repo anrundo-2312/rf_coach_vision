@@ -9,7 +9,10 @@ contatore dei colpi in alto a destra e, alla fine, la scheda della sessione.
 Legge outputs/dati/<video>_velocita_punti.json (velocita_uscita.py,
 direzione_nascosta.py, velocita_rimbalzo.py) e scrive
 outputs/video/<video>_velocita.mp4 in H.264, cosi' si vede anche nel browser.
-Il video di partenza e' quello originale: niente px/s. Con riepilogo.py
+Il video di partenza e' quello originale: niente px/s. Le velocita' scritte
+sono quelle calcolate per riepilogo.CORREZIONE_VELOCITA (0,85: il 15% in meno,
+deciso dall'utente il 2 ottobre); nel CSV dei colpi restano quelle calcolate.
+Con riepilogo.py
 scrive anche, in outputs/dati, <video>_riepilogo.csv/.json e
 <video>_scheda.png (le metriche della sessione e la scheda per l'allievo).
 
@@ -25,7 +28,7 @@ Cosa compare per ogni colpo:
     (pallina coperta o mossa al colpo) ma la direzione si';
   - "km/h non disponibile" in grigio: niente di affidabile.
   - sotto la direzione, dove e' caduta la pallina se il rimbalzo e' stato trovato:
-    "dentro" (con "palla corta" o "profonda"), "fuori: lunga", "fuori: larga"...
+    "dentro" con la fascia (profonda, media, corta, palla corta), "fuori: lunga", "fuori: larga"...
   La riga dentro/fuori e la media compaiono quando la pallina tocca terra
   (RIVELA_AL_RIMBALZO; il loro posto nell'etichetta c'e' gia' da prima, cosi'
   le righe non si spostano).
@@ -119,7 +122,7 @@ def esito_rimbalzo(c):
     """Riga di testo sul rimbalzo trovato (velocita_rimbalzo.py) o None."""
     esito = c.get("dentro_fuori", "")
     if esito == "dentro":
-        return "dentro" + {"corta": ", palla corta", "profonda": ", profonda"}.get(c.get("profondita", ""), "")
+        return "dentro" + (", " + c["profondita"] if c.get("profondita") else "")
     if esito == "fuori":
         return "fuori: " + riepilogo.motivo_fuori(c)
     return None
@@ -143,13 +146,13 @@ def righe_colpo(c, n, fps):
     """(righe dell'etichetta, colore) per un colpo, all'istante n."""
     vis = comparsa(c, n, fps)
     media = c.get("velocita_media_kmh", "")
-    riga_media = [(f"media {media} km/h", "sotto", vis)] if media not in ("", None) else []
+    riga_media = [(f"media {riepilogo.corretta(media)} km/h", "sotto", vis)] if media not in ("", None) else []
     e = esito_rimbalzo(c)
     riga_esito = [(e, "riga", vis)] if e else []
     colore = COLORI.get(c["colpo"], (200, 200, 200))
-    nome = (c["colpo"].upper(), "nome", 1)
+    nome = ((c["colpo"] + (" " + c["dritto_tipo"] if c.get("dritto_tipo") else "")).upper(), "nome", 1)
     if c.get("velocita_uscita_kmh", "") != "":
-        righe = [nome, (f"uscita {c['velocita_uscita_kmh']} km/h", "valore", 1)] + riga_media
+        righe = [nome, (f"uscita {riepilogo.corretta(c['velocita_uscita_kmh'])} km/h", "valore", 1)] + riga_media
         if c.get("direzione"):
             righe.append((c["direzione"], "riga", 1))
         nota = "margine circa +-20 km/h" + (" - calibrazione standard" if c.get("calibrazione") == "standard" else "")
@@ -157,9 +160,9 @@ def righe_colpo(c, n, fps):
     if c.get("velocita_rimbalzo_kmh", "") != "":
         # stima dal rimbalzo nel campo avversario (velocita_rimbalzo.py)
         if str(c.get("nota", "")).startswith("velocita' stimata dal rimbalzo ricostruito"):
-            v, nota = f"circa {c['velocita_rimbalzo_kmh']} km/h (rimbalzo ricostruito)", "rimbalzo coperto, ricostruito: margine circa +-20%"
+            v, nota = f"circa {riepilogo.corretta(c['velocita_rimbalzo_kmh'])} km/h (rimbalzo ricostruito)", "rimbalzo coperto, ricostruito: margine circa +-20%"
         else:
-            v, nota = f"circa {c['velocita_rimbalzo_kmh']} km/h (dal rimbalzo)", "stima dal rimbalzo: margine circa +-15%"
+            v, nota = f"circa {riepilogo.corretta(c['velocita_rimbalzo_kmh'])} km/h (dal rimbalzo)", "stima dal rimbalzo: margine circa +-15%"
         return [nome, (v, "valore", 1)] + riga_media + [(c["direzione"], "riga", 1)] + riga_esito + [(nota, "nota", 1)], colore
     if c.get("direzione"):
         # niente km/h, ma la direzione (direzione_nascosta.py o ricerca estesa)

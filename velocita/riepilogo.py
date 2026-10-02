@@ -29,6 +29,17 @@ Regole (decise il 2 ottobre):
   (velocita_rimbalzo.py, circa +-15-20%) insieme; si dice quante sono le une e
   le altre. Velocita' media del volo: la colonna velocita_media_kmh (distanza
   dal contatto al rimbalzo / tempo di volo, velocita_rimbalzo.py passo 7).
+- percentuale di errori per tipo di colpo: fuori / colpi con l'esito visto
+  (errori_percento). Nel servizio "dentro" vuol dire servizio valido (nel
+  riquadro in diagonale) e "fuori" fallo: la scheda dice "validi" e "falli".
+
+Correzione delle velocita' (decisa dall'utente il 2 ottobre): le velocita'
+MOSTRATE (uscita misurata, stimata dal rimbalzo e media del volo; nel video,
+nella scheda e in <video>_riepilogo.csv/.json) sono quelle calcolate per
+CORREZIONE_VELOCITA = 0,85, cioe' il 15% in meno: all'utente i valori
+sembravano un po' alti. E' una stima a occhio, da verificare (per esempio con
+SwingVision accanto). Il calcolo non cambia: in <video>_velocita.csv restano i
+valori calcolati. Con 1.0 non si corregge niente.
 """
 
 import argparse
@@ -38,6 +49,8 @@ import os
 from collections import Counter
 
 import numpy as np
+
+CORREZIONE_VELOCITA = 0.85   # velocita' mostrate = calcolate x 0,85 (vedi sopra); 1.0 = nessuna correzione
 
 TIPI = ["servizio", "dritto", "rovescio"]
 NOMI = {"servizio": "Servizi", "dritto": "Dritti", "rovescio": "Rovesci", "totale": "Totale"}
@@ -54,6 +67,11 @@ RIGHE = "#8f8e86"
 
 
 # ------------------------------------------------------------------ metriche
+def corretta(kmh):
+    """La velocita' da mostrare: quella calcolata per CORREZIONE_VELOCITA, arrotondata (None se manca)."""
+    return None if kmh in (None, "") else int(round(float(kmh) * CORREZIONE_VELOCITA))
+
+
 def velocita_uscita(c):
     """(km/h, "misurata" o "stimata") o None."""
     if c.get("velocita_uscita_kmh", "") not in ("", None):
@@ -92,22 +110,30 @@ def riga_tipo(colpi, tipo):
     fuori = [c for c in cs if esito(c) == "fuori"]
     motivi = Counter(motivo_fuori(c) for c in fuori)
     prof = Counter(c.get("profondita", "") for c in dentro if c["colpo"] != "servizio")
-    vel = [velocita_uscita(c) for c in cs if velocita_uscita(c) is not None]
-    volo = [float(c["velocita_media_kmh"]) for c in cs if c.get("velocita_media_kmh", "") not in ("", None)]
+    # velocita' mostrate: corrette (CORREZIONE_VELOCITA)
+    vel = [(corretta(x[0]), x[1]) for x in map(velocita_uscita, cs) if x is not None]
+    volo = [corretta(c["velocita_media_kmh"]) for c in cs if c.get("velocita_media_kmh", "") not in ("", None)]
     con_esito = len(dentro) + len(fuori)
     return {
         "colpo": tipo, "colpi": len(cs),
         "dentro": len(dentro), "fuori": len(fuori), "esito_non_visto": len(cs) - con_esito,
         "dentro_percento": round(100 * len(dentro) / con_esito) if con_esito else None,
+        "errori_percento": round(100 * len(fuori) / con_esito) if con_esito else None,
         "fuori_lunga": motivi.get("lunga", 0), "fuori_larga": motivi.get("larga", 0),
         "fuori_altro": sum(n for m, n in motivi.items() if m not in ("lunga", "larga")),
         "profonde": prof.get("profonda", 0), "medie": prof.get("media", 0), "corte": prof.get("corta", 0),
+        "palle_corte": prof.get("palla corta", 0),
         "uscita_media_kmh": _media([v for v, _ in vel]),
         "uscita_max_kmh": round(max(v for v, _ in vel)) if vel else None,
         "uscita_misurate": sum(1 for _, k in vel if k == "misurata"),
         "uscita_stimate": sum(1 for _, k in vel if k == "stimata"),
         "volo_media_kmh": _media(volo), "volo_colpi": len(volo),
         "direzioni": dict(Counter(c["direzione"] for c in cs if c.get("direzione")).most_common()),
+        # dritti inside-out / inside-in (velocita_uscita.tipo_dritto): quanti, e quanti dentro su quelli con esito
+        **{f"{k.replace('-', '_')}{s}": v for k in ("inside-out", "inside-in")
+           for s, v in (("", sum(1 for c in cs if c.get("dritto_tipo") == k)),
+                        ("_dentro", sum(1 for c in cs if c.get("dritto_tipo") == k and esito(c) == "dentro")),
+                        ("_con_esito", sum(1 for c in cs if c.get("dritto_tipo") == k and esito(c))))},
     }
 
 
@@ -119,6 +145,7 @@ def calcola(colpi, nome="", durata_s=None):
                  "come": c.get("rimbalzo_trovato_come", "")}
                 for c in colpi if ha_dati(c) and c.get("rimbalzo_trovato_x_m", "") not in ("", None)]
     return {"video": nome, "durata_s": None if durata_s is None else round(float(durata_s), 1),
+            "correzione_velocita": CORREZIONE_VELOCITA,
             "tipi": tipi, "totale": riga_tipo(colpi, "totale"),
             "senza_dati": [int(c["frame"]) for c in colpi if not ha_dati(c)],
             "rimbalzi": rimbalzi}
@@ -217,19 +244,23 @@ def scheda(rie, W=1920, H=1080, sfondo=None):
         sotto.append(f"{_num(rie['durata_s'])} s di video")
     sotto.append(f"{tot['colpi']} colpi" if tot["colpi"] != 1 else "1 colpo")
     d.text((m, X(118)), "  ·  ".join(sotto), font=F(26), fill=TESTO_2)
-    # in alto a destra i due numeri della sessione: dentro su colpi con esito, errori
+    # in alto a destra i numeri della sessione: dentro e errori sui colpi con esito, servizi validi
     con_esito = tot["dentro"] + tot["fuori"]
+    srv = next((r for r in rie["tipi"] if r["colpo"] == "servizio"), None)
+    srv_esito = srv["dentro"] + srv["fuori"] if srv else 0
     riquadri = [("Dentro", f"{tot['dentro']}/{con_esito}" if con_esito else "–",
-                 f"{tot['dentro_percento']}% dei colpi con esito" if con_esito else "esito mai visto"),
-                ("Errori", str(tot["fuori"]) if con_esito else "–",
-                 "fuori (la rete non si vede)" if con_esito else "esito mai visto")]
+                 f"{tot['dentro_percento']}% dei colpi" if con_esito else "esito mai visto"),
+                ("Errori", f"{tot['fuori']}" if con_esito else "–",
+                 f"{tot['errori_percento']}% dei colpi" if con_esito else "esito mai visto"),
+                ("Servizi validi", f"{srv['dentro']}/{srv_esito}" if srv_esito else "–",
+                 f"{srv['dentro_percento']}%" if srv_esito else ("esito mai visto" if srv else "nessun servizio"))]
     xr = X(1250)
     for titolo, valore, nota in riquadri:
-        d.rounded_rectangle([xr, X(40), xr + X(290), X(150)], radius=X(14), fill=SFONDO_2)
-        d.text((xr + X(22), X(52)), titolo, font=F(22), fill=TESTO_2)
-        d.text((xr + X(22), X(80)), valore, font=F(40, True), fill=TESTO)
-        d.text((xr + X(22), X(124)), nota, font=F(17), fill=TESTO_3)
-        xr += X(316)
+        d.rounded_rectangle([xr, X(40), xr + X(190), X(150)], radius=X(14), fill=SFONDO_2)
+        d.text((xr + X(18), X(52)), titolo, font=F(21), fill=TESTO_2)
+        d.text((xr + X(18), X(80)), valore, font=F(40, True), fill=TESTO)
+        d.text((xr + X(18), X(124)), nota, font=F(17), fill=TESTO_3)
+        xr += X(203)
 
     # una riga per tipo di colpo
     x0, x1 = m, X(1170)
@@ -237,8 +268,18 @@ def scheda(rie, W=1920, H=1080, sfondo=None):
     alt = X(232) if len(rie["tipi"]) <= 3 else X(170)
     for r in rie["tipi"]:
         tipo = r["colpo"]
-        d.rounded_rectangle([x0, y, x1, y + alt - X(18)], radius=X(14), fill=SFONDO_2)
-        d.rounded_rectangle([x0, y, x0 + X(8), y + alt - X(18)], radius=X(4), fill=COLORE_SCHEDA[tipo])
+        # righe in fondo: direzioni, profondita' (dritti e rovesci dentro), inside-out / inside-in (dritti)
+        sotto = ["Direzioni: " + ("  ·  ".join(f"{t} {n}" for t, n in r["direzioni"].items()) or "–")]
+        if tipo != "servizio" and r["dentro"]:
+            sotto.append(f"Profondità (dentro): profonde {r['profonde']}  ·  medie {r['medie']}  ·  corte {r['corte']}"
+                         f"  ·  palle corte {r['palle_corte']}")
+        if r.get("inside_out") or r.get("inside_in"):
+            sotto.append("Dal lato del rovescio: " + "  ·  ".join(
+                f"{t} {r[k]}" + (f" ({r[k + '_dentro']}/{r[k + '_con_esito']} dentro)" if r[k + "_con_esito"] else "")
+                for t, k in (("inside-out", "inside_out"), ("inside-in", "inside_in")) if r[k]))
+        alt_r = alt + X(27) * max(0, len(sotto) - 2)
+        d.rounded_rectangle([x0, y, x1, y + alt_r - X(18)], radius=X(14), fill=SFONDO_2)
+        d.rounded_rectangle([x0, y, x0 + X(8), y + alt_r - X(18)], radius=X(4), fill=COLORE_SCHEDA[tipo])
         _marcatore(d, FORMA[tipo], x0 + X(44), y + X(42), X(11), COLORE_SCHEDA[tipo])
         d.text((x0 + X(68), y + X(22)), NOMI[tipo], font=F(34, True), fill=TESTO)
         d.text((x0 + X(68), y + X(66)), f"{r['colpi']} colpi" if r["colpi"] != 1 else "1 colpo", font=F(22), fill=TESTO_2)
@@ -248,28 +289,30 @@ def scheda(rie, W=1920, H=1080, sfondo=None):
         con_esito = r["dentro"] + r["fuori"]
         if con_esito:
             d.text((cx, y + X(14)), f"{r['dentro']}/{con_esito}", font=F(58, True), fill=TESTO)
-            d.text((cx, y + X(84)), f"dentro  ·  {r['dentro_percento']}%", font=F(22), fill=TESTO_2)
+            d.text((cx, y + X(84)), f"{'validi' if tipo == 'servizio' else 'dentro'}  ·  {r['dentro_percento']}%",
+                   font=F(22), fill=TESTO_2)
         else:
             d.text((cx, y + X(14)), "–", font=F(58, True), fill=TESTO_3)
             d.text((cx, y + X(84)), "esito non visto", font=F(22), fill=TESTO_2)
         if r["esito_non_visto"] and con_esito:
             d.text((cx, y + X(112)), f"+{r['esito_non_visto']} con esito non visto", font=F(19), fill=TESTO_3)
 
+
         # colonna 2: errori
-        cx = x0 + X(560)
-        d.text((cx, y + X(20)), "Fuori", font=F(22), fill=TESTO_2)
+        cx = x0 + X(540)
+        d.text((cx, y + X(20)), "Falli" if tipo == "servizio" else "Errori", font=F(22), fill=TESTO_2)
         if not con_esito:
             d.text((cx, y + X(50)), "–", font=F(40, True), fill=TESTO_3)
-        elif r["fuori"]:
-            motivi = [f"{n} {t}" for t, n in (("lunga", r["fuori_lunga"]), ("larga", r["fuori_larga"]),
-                                              ("altro", r["fuori_altro"])) if n]
-            d.text((cx, y + X(50)), str(r["fuori"]), font=F(40, True), fill=TESTO)
-            d.text((cx, y + X(98)), ", ".join(motivi), font=F(20), fill=TESTO_2)
         else:
-            d.text((cx, y + X(50)), "0", font=F(40, True), fill=TESTO)
+            d.text((cx, y + X(52)), f"{r['fuori']} · {r['errori_percento']}%", font=F(36, True), fill=TESTO)
+            motivi = [f"{n} {t}" for t, n in (("lung" + ("o" if tipo == "servizio" else "a"), r["fuori_lunga"]),
+                                              ("larg" + ("o" if tipo == "servizio" else "a"), r["fuori_larga"]),
+                                              ("altro", r["fuori_altro"])) if n]
+            if motivi:
+                d.text((cx, y + X(98)), ", ".join(motivi), font=F(20), fill=TESTO_2)
 
-        # colonna 3: velocita'
-        cx = x0 + X(730)
+        # colonna 3: velocita' (gia' corrette, CORREZIONE_VELOCITA)
+        cx = x0 + X(770)
         d.text((cx, y + X(20)), "Velocità d'uscita", font=F(22), fill=TESTO_2)
         if r["uscita_media_kmh"] is not None:
             d.text((cx, y + X(50)), f"{r['uscita_media_kmh']} km/h", font=F(40, True), fill=TESTO)
@@ -284,18 +327,12 @@ def scheda(rie, W=1920, H=1080, sfondo=None):
         else:
             d.text((cx, y + X(50)), "–", font=F(40, True), fill=TESTO_3)
 
-        # riga sotto: direzioni e profondita'
-        dirs = "  ·  ".join(f"{t} {n}" for t, n in r["direzioni"].items()) or "–"
-        riga = "Direzioni: " + dirs
-        if tipo != "servizio" and r["dentro"]:
-            riga2 = f"Profondità (dentro): profonde {r['profonde']}  ·  medie {r['medie']}  ·  corte {r['corte']}"
-        else:
-            riga2 = ""
-        fy = y + alt - X(18) - (X(62) if riga2 else X(36))
-        d.text((x0 + X(68), fy), _taglia(d, riga, F(20), x1 - x0 - X(90)), font=F(20), fill=TESTO_2)
-        if riga2:
-            d.text((x0 + X(68), fy + X(27)), riga2, font=F(20), fill=TESTO_2)
-        y += alt
+        # righe in fondo
+        fy = y + alt_r - X(18) - X(9) - X(27) * len(sotto)
+        for riga in sotto:
+            d.text((x0 + X(68), fy), _taglia(d, riga, F(20), x1 - x0 - X(90)), font=F(20), fill=TESTO_2)
+            fy += X(27)
+        y += alt_r
 
     # mappa dei rimbalzi: meta' campo avversario vista dall'alto, rete in basso
     _mappa_rimbalzi(d, rie, X(1250), X(200), X(1856), X(880), k)
@@ -305,6 +342,9 @@ def scheda(rie, W=1920, H=1080, sfondo=None):
             "non conta né come dentro né come fuori.",
             "Velocità stimate dal rimbalzo: margine circa ±15-20%. Media in volo = distanza dal colpo al "
             "rimbalzo / tempo di volo."]
+    if rie.get("correzione_velocita", 1.0) != 1.0:
+        note.append(f"Velocità mostrate = calcolate × {_num(rie['correzione_velocita'], 2)} "
+                    f"(correzione di {round(100 * (1 - rie['correzione_velocita']))}% decisa a occhio, da verificare).")
     if rie["senza_dati"]:
         n = len(rie["senza_dati"])
         note.append(f"Non contati: {n} colp{'o' if n == 1 else 'i'} rilevat{'o' if n == 1 else 'i'} senza dati "
@@ -386,7 +426,7 @@ def main():
         print("scritto", p)
     for r in rie["tipi"] + [rie["totale"]]:
         esiti = f"{r['dentro']}/{r['dentro'] + r['fuori']} dentro" if r["dentro"] + r["fuori"] else "esito mai visto"
-        print(f"  {NOMI[r['colpo']]:8s} {r['colpi']:2d} colpi, {esiti}, fuori {r['fuori']}, "
+        print(f"  {NOMI[r['colpo']]:8s} {r['colpi']:2d} colpi, {esiti}, fuori {r['fuori']} ({r['errori_percento']}%), "
               f"non visto {r['esito_non_visto']}, uscita media {r['uscita_media_kmh']} km/h, volo {r['volo_media_kmh']}")
 
 

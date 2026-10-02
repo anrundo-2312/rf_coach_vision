@@ -76,14 +76,21 @@ Un rimbalzo non vale per due colpi.
    bassa della velocita' d'uscita (di solito 75-85%): se viene piu' alta una
    delle due misure e' sbagliata, la media non si scrive e la nota lo dice.
    Senza rimbalzo trovato o senza velocita' non c'e'.
+DRITTO INSIDE-OUT / INSIDE-IN (colonna dritto_tipo, velocita_uscita.tipo_dritto):
+dritto colpito con i piedi almeno 1 m oltre la riga centrale dalla parte del
+rovescio; per un destro inside-in se la pallina finisce nel terzo di sinistra
+del campo avversario, inside-out se finisce nel terzo di destra (mancino al
+contrario); nel terzo centrale nessuno dei due. La mano si ricava dai contatti visti
+(--mano auto) o si indica (--mano destra / sinistra).
 Il rimbalzo trovato (passi 1-6) e' nelle colonne rimbalzo_trovato_x_m,
 rimbalzo_trovato_y_m, rimbalzo_trovato_frame e rimbalzo_trovato_come
 (tracknet, colore, ricostruito). rimbalzo_x_m e rimbalzo_y_m restano quelle
 del servizio, usate per la fascia (previsto o trovato).
 Dal rimbalzo trovato: dentro_fuori (campo singolo; servizio: riquadro in
 diagonale; si decide sempre, la riga conta dentro), distanza_riga_m (+ dentro,
-- fuori), riga_vicina e profondita (corta entro 3 m dalla rete, profonda negli
-ultimi 3 m, media): vedi velocita_uscita.dentro_fuori. Precisione: di lato
+- fuori), riga_vicina e profondita (dalla riga di fondo: profonda negli ultimi
+1,5 m, media fino alla riga del servizio, corta fino a 3 m dalla rete, palla
+corta entro 3 m dalla rete): vedi velocita_uscita.dentro_fuori. Precisione: di lato
 buona; in profondita' vicino al fondo lontano scarsa con la camera bassa
 (alcaraz: circa 0,25 m per pixel), vedi LEGGIMI.
 
@@ -554,7 +561,7 @@ def aggiungi_media(t, colpi, verbose=False):
             print(f"frame {c['frame']} {c['colpo']}: media del volo {media:.0f} km/h (volo {volo:.2f} s, {d:.1f} m)")
 
 
-def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=True):
+def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=True, mano="auto"):
     nome = os.path.splitext(os.path.basename(video))[0]
     p_json = os.path.join(cartella_dati, nome + "_velocita_punti.json")
     colpi = json.load(open(p_json))
@@ -646,6 +653,13 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     aggiungi_media(t, colpi, verbose)
     vu.aggiungi_soglie(colpi)
     vu.aggiungi_dentro_fuori(colpi)
+    # dritto inside-out / inside-in (dopo il rimbalzo trovato, che e' l'arrivo piu' sicuro)
+    m = vu.aggiungi_inside(colpi, mano)
+    if verbose:
+        voti = vu.mano_dai_colpi(colpi)
+        print(f"giocatore {'destro' if m == 'destra' else 'mancino'}" +
+              (f" (dai contatti visti: {voti[1]} su {voti[2]})" if mano == "auto" else " (indicato)") +
+              "".join(f"; dritto {c['frame']} {c['dritto_tipo']}" for c in colpi if c.get("dritto_tipo")))
     with open(os.path.join(cartella_dati, nome + "_velocita.csv"), "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=CAMPI, extrasaction="ignore")
         w.writeheader()
@@ -659,8 +673,10 @@ def main():
     ap.add_argument("--video", required=True)
     ap.add_argument("--dati", default="outputs/dati")
     ap.add_argument("--calibrazione")
+    ap.add_argument("--mano", default="auto", choices=["auto", "destra", "sinistra"],
+                    help="mano del giocatore, per inside-out/inside-in (auto: dai contatti visti)")
     a = ap.parse_args()
-    aggiorna(a.video, a.dati, a.calibrazione)
+    aggiorna(a.video, a.dati, a.calibrazione, mano=a.mano)
 
 
 if __name__ == "__main__":

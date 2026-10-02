@@ -129,11 +129,20 @@ MARGINE_CONFINE = 0.25      # entro 0,25 m dal confine tra due fasce si dice anc
 SINGOLO_X = (1.37, 9.60)    # righe laterali del singolo
 RETE_Y, SERVIZIO_Y, FONDO_Y = 11.885, 18.285, 23.77   # rete, riga del servizio e fondo avversari
 RAGGIO_PALLINA = 0.033      # la pallina che tocca la riga e' dentro
-CORTA_M = 3.0               # "palla corta": rimbalzo entro 3 m dalla rete
-PROFONDA_M = 3.0            # "profonda": negli ultimi 3 m prima della riga di fondo
+# profondita' dei dritti e rovesci dentro: quattro fasce (utente, 2 ottobre), dalla riga di fondo verso la rete:
+# profonda 1,5 m, media fino alla riga del servizio, corta fino a 3 m dalla rete, palla corta (smorzata) gli
+# ultimi 3 m. L'utente le aveva date come 1,5 + 3,5 + 3 + 3 m (= 11 m); la meta' campo e' 11,885 m, quindi le due
+# fasce in mezzo sono adattate alle righe vere: la media finisce sulla riga del servizio (3,985 m invece di
+# 3,5) e la corta va dalla riga del servizio a 3 m dalla rete (3,40 m invece di 3).
+PROFONDA_M = 1.5            # "profonda": negli ultimi 1,5 m prima della riga di fondo
+PALLA_CORTA_M = 3.0         # "palla corta" (smorzata): entro 3 m dalla rete
 
 # Controllo del risultato (passo 6): solo cosa si mostra, il calcolo resta identico
 ERRORE_MAX_1080 = 6.0       # px (riportati a 1080p): oltre, la traiettoria non spiega i punti
+# dritto inside-out / inside-in (2 ottobre, soglia decisa dall'utente)
+INSIDE_M = 1.0              # piedi almeno 1 m oltre la riga centrale, dalla parte del rovescio
+                            # arrivo: nel terzo laterale del campo avversario (FASCIA_CENTRO, regola dell'utente)
+SEPARAZIONE_MANO = 0.3      # per capire la mano: contatto ad almeno 0,3 m di lato dai piedi
 VELOCITA_PLAUSIBILE = (30, 250)  # km/h
 ANGOLO_MAX = 45.0           # gradi rispetto alle righe laterali, colpi da fondo (non il servizio)
 
@@ -318,7 +327,8 @@ def dentro_fuori(colpo, x, y, x_giocatore):
     pochi centimetri dalla riga; la riga conta dentro.
     Restituisce (esito, distanza_m, riga, profondita): distanza_m e' quanto il rimbalzo sta dentro
     (positiva) o fuori (negativa) rispetto alla riga piu' vicina o piu' superata; profondita' (solo dritti
-    e rovesci dentro): corta (entro CORTA_M dalla rete), profonda (negli ultimi PROFONDA_M), media.
+    e rovesci dentro), dalla riga di fondo verso la rete: profonda (ultimi PROFONDA_M), media (fino alla riga
+    del servizio), corta (dalla riga del servizio a PALLA_CORTA_M dalla rete), palla corta (entro PALLA_CORTA_M).
     """
     if colpo == "servizio":
         if x_giocatore >= CENTRO_X:
@@ -333,7 +343,8 @@ def dentro_fuori(colpo, x, y, x_giocatore):
     esito = "dentro" if distanza >= -RAGGIO_PALLINA else "fuori"
     profondita = ""
     if colpo != "servizio" and esito == "dentro":
-        profondita = ("corta" if y - RETE_Y < CORTA_M else "profonda" if FONDO_Y - y < PROFONDA_M else "media")
+        profondita = ("palla corta" if y - RETE_Y < PALLA_CORTA_M else "corta" if y < SERVIZIO_Y
+                      else "profonda" if FONDO_Y - y < PROFONDA_M else "media")
     return esito, float(distanza), riga, profondita
 
 
@@ -348,6 +359,59 @@ def aggiungi_dentro_fuori(colpi):
                                             float(c["rimbalzo_trovato_y_m"]), float(c["giocatore_x_m"]))
         c.update({"dentro_fuori": esito, "distanza_riga_m": round(d, 2), "riga_vicina": riga, "profondita": prof})
     return colpi
+
+
+def mano_dai_colpi(colpi):
+    """
+    "destra" o "sinistra" dai dritti e rovesci con il contatto visto (partenza_da = "contatto"): nel dritto
+    la racchetta colpisce dalla parte della mano (destro: contatto a destra dei piedi), nel rovescio
+    dall'altra. Vince la maggioranza; senza voti "destra". Ritorna (mano, voti a favore, voti totali).
+    """
+    si = n = 0
+    for c in colpi:
+        if c.get("partenza_da") != "contatto" or c.get("colpo") not in ("dritto", "rovescio"):
+            continue
+        try:
+            d = float(c["contatto_x_m"]) - float(c["giocatore_x_m"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if abs(d) < SEPARAZIONE_MANO:
+            continue
+        n += 1
+        si += (d > 0) == (c["colpo"] == "dritto")
+    if n == 0:
+        return "destra", 0, 0
+    return ("destra" if si >= n - si else "sinistra"), max(si, n - si), n
+
+
+def tipo_dritto(c, mano):
+    """
+    Dritto inside-out / inside-in: colpito con i PIEDI dalla parte del rovescio, almeno INSIDE_M oltre la
+    riga centrale (destro: a sinistra). Poi conta dove finisce la pallina, nei tre terzi del singolo
+    avversario (gli stessi della direzione, FASCIA_CENTRO; regola dell'utente, 2 ottobre): per un destro
+    inside-in se finisce nel terzo di SINISTRA (lungo linea, verso il dritto dell'avversario), inside-out
+    se finisce nel terzo di DESTRA (in diagonale, verso il suo rovescio); per un mancino al contrario.
+    Se finisce nel terzo centrale non e' ne' l'uno ne' l'altro (""). Dove finisce: il rimbalzo trovato
+    se c'e', se no l'arrivo a 21 m. "" anche per gli altri colpi.
+    """
+    if c.get("colpo") != "dritto" or not c.get("direzione") or c.get("giocatore_x_m", "") in (None, ""):
+        return ""
+    verso = -1 if mano == "destra" else 1                   # lato del rovescio: x piu' piccole per un destro
+    if (float(c["giocatore_x_m"]) - CENTRO_X) * verso < INSIDE_M:
+        return ""
+    x = c.get("rimbalzo_trovato_x_m", "")
+    x = float(x) if x not in (None, "") else float(c["arrivo_x_m"])
+    a = (x - CENTRO_X) * verso                              # > 0: dalla parte del rovescio del giocatore
+    return "inside-in" if a > FASCIA_CENTRO else "inside-out" if a < -FASCIA_CENTRO else ""
+
+
+def aggiungi_inside(colpi, mano="auto"):
+    """Colonna dritto_tipo (inside-out, inside-in o vuota). mano: "auto", "destra" o "sinistra"."""
+    if mano == "auto":
+        mano = mano_dai_colpi(colpi)[0]
+    for c in colpi:
+        c["dritto_tipo"] = tipo_dritto(c, mano)
+    return mano
 
 
 def classifica_servizio(x_giocatore, rimbalzo):
@@ -609,7 +673,7 @@ def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam
             print(f"  ricerca estesa: frame {fc} {colpo}, solo direzione: {direzione}")
 
 
-CAMPI = ["frame", "tempo_s", "colpo", "velocita_uscita_kmh", "velocita_rimbalzo_kmh", "direzione", "angolo_gradi",
+CAMPI = ["frame", "tempo_s", "colpo", "velocita_uscita_kmh", "velocita_rimbalzo_kmh", "direzione", "dritto_tipo", "angolo_gradi",
          "soglia_sx_gradi", "soglia_dx_gradi", "giocatore_x_m", "partenza_da", "arrivo_x_m", "rimbalzo_x_m", "rimbalzo_y_m", "contatto_x_m", "contatto_y_m", "contatto_z_m",
          "punti_usati", "errore_px", "calibrazione", "nota"]
 
