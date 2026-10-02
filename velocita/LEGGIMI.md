@@ -46,8 +46,13 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
   parte e sul video compare come "circa ... km/h (dal rimbalzo)". Per tutti
   gli altri colpi con una direzione cerca solo il punto del rimbalzo, per la
   mappa.
-- `disegna_velocita.py` - riscrive il video con colpo, km/h, direzione e una
-  piccola mappa del campo, con il punto in cui la pallina rimbalza.
+- `disegna_velocita.py` - riscrive il video con colpo, km/h (e sotto, in
+  piccolo, la velocita' media del volo), direzione e una piccola mappa del
+  campo, con il punto in cui la pallina rimbalza; in alto a destra il
+  contatore dei colpi e, alla fine, la scheda della sessione.
+- `riepilogo.py` - le metriche della sessione (colpi per tipo, dentro e fuori,
+  errori, profondita', direzioni, velocita') e la scheda per l'allievo. Lo
+  chiama `disegna_velocita.py`: di solito non serve eseguirlo a parte.
 - `calibrazioni/` - `standard.json`, la calibrazione standard, e quelle dei
   singoli video: `<video>.json` e `<video>_campo.jpg`, l'immagine di
   controllo (resta sul PC). Il JSON di un video viene copiato anche su Drive
@@ -151,8 +156,16 @@ python velocita/disegna_velocita.py --video inputs/<video>.mp4
 ```
 
 Risultati: `outputs/dati/<video>_velocita.csv` (un colpo per riga),
-`outputs/dati/<video>_campo.jpg` (controllo della calibrazione) e
-`outputs/video/<video>_velocita.mp4`.
+`outputs/dati/<video>_campo.jpg` (controllo della calibrazione),
+`outputs/video/<video>_velocita.mp4` e, da `disegna_velocita.py`, le metriche
+della sessione: `outputs/dati/<video>_riepilogo.csv` (una riga per tipo di
+colpo piu' il totale), `<video>_riepilogo.json` e `<video>_scheda.png` (la
+scheda per l'allievo). Le metriche si possono rifare da sole, senza
+riscrivere il video:
+
+```
+python velocita/riepilogo.py --video inputs/<video>.mp4
+```
 
 ### Calibrazione del campo di un video
 
@@ -369,6 +382,139 @@ Tempo: il colore costa circa 15 s a colpo su un video 4K, quasi tutti per il
 giallo fermo. I fotogrammi ora si leggono in fila invece che a salti: stessi
 risultati, da circa 50 a 15 s a colpo in 4K.
 
+### Dentro o fuori, palla corta (1 ottobre)
+
+Dal rimbalzo trovato (passi 1-6) si dice anche dove e' caduta la pallina
+(`velocita_uscita.dentro_fuori`, chiamata da `velocita_rimbalzo.py`):
+
+- **dentro / fuori**: dritti e rovesci rispetto al campo singolo avversario;
+  il servizio rispetto al riquadro in diagonale (chi serve da destra tira nel
+  riquadro di sinistra). La riga conta dentro (raggio della pallina, 3 cm).
+  Si decide sempre, anche a pochi centimetri dalla riga.
+- **profondita'** (dritti e rovesci dentro): *corta* se il rimbalzo e' entro
+  3 m dalla rete, *profonda* se e' negli ultimi 3 m prima della riga di fondo,
+  *media* in mezzo.
+
+Nel CSV: `dentro_fuori`, `distanza_riga_m` (quanto e' dentro, positiva, o
+fuori, negativa, rispetto alla riga piu' vicina o piu' superata),
+`riga_vicina` (fondo, laterale sinistra/destra; servizio: servizio, centrale,
+laterale) e `profondita`. Sul video, sotto la direzione: "dentro", "dentro,
+palla corta", "dentro, profonda", "fuori: lunga", "fuori: larga"; sulla mappa
+il pallino del rimbalzo ha il bordo rosso se e' fuori. Senza rimbalzo trovato
+(per esempio il servizio con il solo rimbalzo previsto, incerto di 2-3 m in
+profondita') non si dice niente.
+
+**Precisione.** Di lato e' buona: nel campo lontano un pixel vale circa 2 cm
+(1080p, camera standard), quindi con l'errore di TrackNet (1-4 px) il punto e'
+giusto a pochi centimetri, piu' l'errore della calibrazione. In profondita'
+invece, con la camera bassa, il campo lontano e' schiacciato in pochi pixel:
+vicino alla riga di fondo un pixel vale circa 0,27-0,30 m (alcaraz e camera
+standard, 1080p), quindi l'errore e' di circa +-0,3-1,2 m. Vicino alla rete va
+meglio (circa 0,15 m per pixel), per questo "palla corta" e' affidabile. Su
+alcaraz il dritto 418 risulta fuori lungo di 0,7 m, cioe' circa 2,5 pixel: e'
+dentro l'errore, quindi quel "fuori" non e' sicuro. Con la camera di Djokovic
+(3,2 m d'altezza, 13,6 m dietro il fondo, 4K) un pixel vale 0,06 m: piu' in
+alto e piu' indietro la profondita' migliora molto. Risultati sui video di
+prova: alcaraz 141 (servizio), 275, 577, 709, 867, 1152 dentro, 418 fuori
+lungo; Djokovic 65 e swing_vision 412 e 553 dentro; profonde tutte tranne
+alcaraz 577 e 709 (medie), nessuna corta.
+
+### Velocita' media del volo (2 ottobre)
+
+7. Per i colpi con una velocita' e il rimbalzo trovato, `velocita_rimbalzo.py`
+   scrive anche `velocita_media_kmh`: la distanza a terra dal contatto al
+   rimbalzo diviso il tempo di volo. E' la velocita' che mostra SwingVision
+   (vedi "Provato su"). Nelle stime dal rimbalzo (passi 1-5) c'era gia' nella
+   nota ("media fino al rimbalzo"): e' il dato da cui si stima la velocita'
+   d'uscita. Nei colpi con la velocita' misurata si calcola con il contatto
+   del calcolo (tra il frame del colpo e il successivo) e il rimbalzo del
+   passo 6.
+
+Sul video compare in piccolo sotto la velocita': "media 105 km/h". La
+pallina in volo rallenta sempre (aria), quindi la media e' piu' bassa della
+velocita' d'uscita: sui video di prova il 76-87%. Se viene piu' alta, una
+delle due misure e' sbagliata: la media non si scrive (la velocita' d'uscita
+resta com'e') e la nota lo dice. Succede su swing_vision 412: 90 km/h
+misurati, media fino al rimbalzo 93 km/h; dalla media il dritto sarebbe
+intorno ai 120 km/h, quindi i 90 sono probabilmente bassi. Senza rimbalzo
+trovato la media non c'e' (per esempio il servizio di Nicola, dove c'e' solo
+il rimbalzo previsto).
+
+Valori: alcaraz 141 servizio 138 km/h (uscita circa 166), 275 105 (138), 418
+113 (circa 149), 577 121 (circa 152), 709 94 (circa 118), 867 97 (circa 128),
+1152 118 (circa 152); Djokovic 65 107 (123); swing_vision 553 92 (circa 120).
+
+## Il video: animazioni, contatore e scheda finale (2 ottobre)
+
+Nella mappa in basso a sinistra la freccia parte al colpo e si allunga
+mentre la pallina vola: arriva al punto del rimbalzo nel fotogramma in cui
+la pallina tocca terra (un po' piu' piano alla fine, perche' l'aria la
+frena). In quel momento spunta il pallino del rimbalzo (si gonfia e torna
+normale in 0,35 s, con un'onda che si allarga, rossa se e' fuori) e
+nell'etichetta compaiono, in dissolvenza, la riga dentro/fuori e la media del
+volo (il loro posto c'e' gia' da prima, cosi' le righe non si spostano). Se
+il rimbalzo non e' stato trovato la freccia arriva a 21 m in mezzo secondo.
+L'etichetta resta almeno 1 s dopo il rimbalzo. Le costanti sono in cima a
+`disegna_velocita.py` (`SPUNTA_S`, `ONDA_S`, `RIVELA_AL_RIMBALZO`: con False
+dentro/fuori e media compaiono subito, al colpo).
+
+In alto a destra un contatore: per ogni tipo di colpo quanti dentro, quanti
+fuori e quanti colpi finora. "colpi" sale al colpo, "dentro" e "fuori"
+quando la pallina tocca terra; il numero che cambia si illumina per un
+attimo (verde dentro, rosso fuori). I colpi con l'esito non visto contano
+solo in "colpi".
+
+Alla fine del video, per 6 s (`FINALE_S`), la scheda della sessione sopra
+l'ultimo fotogramma sfocato: la stessa di `<video>_scheda.png`.
+
+## Metriche della sessione e scheda per l'allievo (2 ottobre)
+
+`riepilogo.py` conta, per ogni video, servizi, dritti e rovesci. Regole
+(decise il 2 ottobre):
+
+- si contano i colpi con almeno una velocita' o una direzione. Quelli senza
+  niente (sul video in grigio, "km/h non disponibile") sono spesso falsi
+  colpi (alcaraz 246 e 1302): restano fuori dal conto e la scheda li elenca
+  in una nota ("rilevati senza dati");
+- **buono = dentro**: il rimbalzo cade nel campo singolo (servizio: nel
+  riquadro in diagonale), con le regole di "Dentro o fuori" qui sopra.
+  **Errore = fuori** (lunga, larga). Se il rimbalzo non si e' visto l'esito
+  e' "non visto" e non conta ne' come buono ne' come errore: "3/4 dentro"
+  vuol dire 3 dentro su 4 colpi con l'esito visto, e la percentuale e' su
+  quei 4. La rete non si riconosce ancora: un colpo in rete e' "non visto";
+- velocita' d'uscita: media e massimo delle misurate e delle stimate dal
+  rimbalzo insieme, dicendo quante sono le une e le altre; media del volo:
+  la media di `velocita_media_kmh`.
+
+Per ogni tipo di colpo e per il totale: colpi, dentro, fuori (lunghe,
+larghe), esito non visto, percentuale dentro, profondita' dei colpi dentro
+(profonde, medie, corte; non nel servizio), direzioni, velocita' d'uscita
+media e massima, media del volo. Nel CSV `<video>_riepilogo.csv` una riga per
+tipo piu' il totale; nel JSON anche la lista dei rimbalzi.
+
+La scheda (`<video>_scheda.png`, 1920x1080, da mandare all'allievo): in alto
+i dentro sui colpi con esito e gli errori della sessione; una riga per tipo
+di colpo con dentro, fuori, velocita', direzioni e profondita'; a destra la
+meta' campo avversaria vista dall'alto con tutti i rimbalzi (forma e colore
+= tipo di colpo: cerchio dritto, rombo rovescio, quadrato servizio; anello
+rosso = fuori; vuoto = rimbalzo ricostruito). I colori sono quelli del video,
+un po' piu' scuri per il fondo scuro; insieme alle forme si distinguono
+anche da chi confonde i colori.
+
+Sui video di prova:
+
+| Video | Colpi contati | Dentro | Fuori | Esito non visto | Senza dati |
+|---|---|---|---|---|---|
+| alcaraz | 8 (1 servizio, 4 dritti, 3 rovesci) | 6 | 1 (dritto 418, lunga) | 1 (rovescio 1015) | 2 (246, 1302) |
+| nicola_matarese_trim | 2 (servizio, rovescio) | 0 | 0 | 2 | 0 |
+| zverev_djokovic_trim_swin_like | 2 (dritto, rovescio) | 1 | 0 | 1 (rovescio 217) | 0 |
+| swing_vision_test1_trim | 3 (servizio, dritto, rovescio) | 2 | 0 | 1 (servizio 302) | 1 (1379) |
+
+Alcaraz: dritti 3/4 dentro (75%), rovesci 2/2, servizio 1/1; velocita'
+d'uscita media dei dritti 139 km/h (1 misurata, 3 stimate), media del volo
+108 km/h. Attenzione: l'unico "fuori" (418, lungo di 0,7 m) e' dentro
+l'errore della profondita' vicino al fondo lontano (vedi "Dentro o fuori").
+
 ## Colpi con il contatto nascosto: solo la direzione
 
 `direzione_nascosta.py` si esegue dopo `velocita_uscita.py` e guarda solo i
@@ -490,6 +636,10 @@ su altri.
   non nel modello.
 - Il classificatore della posa a volte vede un servizio dove il giocatore
   cammina (alcaraz, frame 1302).
+- Dentro/fuori in profondita' vicino al fondo lontano: con la camera a circa
+  2,2 m un pixel vale circa 0,3 m, quindi le chiamate "lunga" entro circa 1 m
+  dalla riga non sono sicure; di lato invece la precisione e' di pochi
+  centimetri piu' l'errore della calibrazione.
 - Il servizio in slice o in kick curva di lato: la rotazione non e' nel
   modello, quindi il rimbalzo vero puo' spostarsi rispetto a quello previsto.
 - Con il telefono all'altezza standard (circa 2,2 m) tutto il campo lontano
@@ -500,6 +650,11 @@ su altri.
   dell'avversario dietro la fascia bianca (fotogrammi 1070-1071). Per vedere
   la riga di fondo lontana sopra la rete il telefono dovrebbe stare ad almeno
   circa 2,4 m.
+- Metriche: la rete non si riconosce (un colpo in rete e' "esito non
+  visto"); i falsi colpi senza dati sono esclusi dal conto, ma un falso colpo
+  con una direzione verrebbe contato. Media del volo solo con il rimbalzo
+  trovato: per i colpi misurati senza rimbalzo si potrebbe calcolare dal
+  volo previsto (come il rimbalzo previsto del servizio), non fatto.
 - Da fare: avviso automatico quando le righe del campo non coincidono con la
   calibrazione standard, rilevamento del rimbalzo come vincolo, dimensione
   apparente della pallina come misura di distanza, audio, rotazione nel

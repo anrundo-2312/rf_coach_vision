@@ -125,6 +125,13 @@ PARTENZA_DISTANZA_MAX = 2.5  # m: un punto di partenza piu' lontano dai piedi no
 TERZO_RIQUADRO = (CENTRO_X - 1.37) / 3
 MARGINE_CONFINE = 0.25      # entro 0,25 m dal confine tra due fasce si dice anche verso quale
 
+# Dentro/fuori e profondita' del rimbalzo trovato (si usano in velocita_rimbalzo.py)
+SINGOLO_X = (1.37, 9.60)    # righe laterali del singolo
+RETE_Y, SERVIZIO_Y, FONDO_Y = 11.885, 18.285, 23.77   # rete, riga del servizio e fondo avversari
+RAGGIO_PALLINA = 0.033      # la pallina che tocca la riga e' dentro
+CORTA_M = 3.0               # "palla corta": rimbalzo entro 3 m dalla rete
+PROFONDA_M = 3.0            # "profonda": negli ultimi 3 m prima della riga di fondo
+
 # Controllo del risultato (passo 6): solo cosa si mostra, il calcolo resta identico
 ERRORE_MAX_1080 = 6.0       # px (riportati a 1080p): oltre, la traiettoria non spiega i punti
 VELOCITA_PLAUSIBILE = (30, 250)  # km/h
@@ -301,6 +308,45 @@ def aggiungi_soglie(colpi):
         if c.get("direzione") and c.get("colpo") != "servizio" and c.get("contatto_x_m", "") != "":
             sx, dx = soglie_angolo((float(c["contatto_x_m"]), float(c["contatto_y_m"])))
             c.update({"soglia_sx_gradi": round(sx, 1), "soglia_dx_gradi": round(dx, 1)})
+    return colpi
+
+
+def dentro_fuori(colpo, x, y, x_giocatore):
+    """
+    Dentro o fuori un rimbalzo in (x, y) m. Dritti e rovesci: campo singolo avversario. Servizio: il
+    riquadro in diagonale (chi serve da destra tira nel riquadro di sinistra). Si decide sempre, anche a
+    pochi centimetri dalla riga; la riga conta dentro.
+    Restituisce (esito, distanza_m, riga, profondita): distanza_m e' quanto il rimbalzo sta dentro
+    (positiva) o fuori (negativa) rispetto alla riga piu' vicina o piu' superata; profondita' (solo dritti
+    e rovesci dentro): corta (entro CORTA_M dalla rete), profonda (negli ultimi PROFONDA_M), media.
+    """
+    if colpo == "servizio":
+        if x_giocatore >= CENTRO_X:
+            righe = {"laterale": x - SINGOLO_X[0], "centrale": CENTRO_X - x}
+        else:
+            righe = {"centrale": x - CENTRO_X, "laterale": SINGOLO_X[1] - x}
+        righe.update({"servizio": SERVIZIO_Y - y, "rete": y - RETE_Y})
+    else:
+        righe = {"laterale sinistra": x - SINGOLO_X[0], "laterale destra": SINGOLO_X[1] - x,
+                 "fondo": FONDO_Y - y, "rete": y - RETE_Y}
+    riga, distanza = min(righe.items(), key=lambda kv: kv[1])     # dentro: la piu' vicina; fuori: la piu' superata
+    esito = "dentro" if distanza >= -RAGGIO_PALLINA else "fuori"
+    profondita = ""
+    if colpo != "servizio" and esito == "dentro":
+        profondita = ("corta" if y - RETE_Y < CORTA_M else "profonda" if FONDO_Y - y < PROFONDA_M else "media")
+    return esito, float(distanza), riga, profondita
+
+
+def aggiungi_dentro_fuori(colpi):
+    """Colonne dentro_fuori, distanza_riga_m, riga_vicina, profondita per i colpi con un rimbalzo trovato."""
+    for c in colpi:
+        for k in ("dentro_fuori", "distanza_riga_m", "riga_vicina", "profondita"):
+            c.pop(k, None)
+        if c.get("rimbalzo_trovato_x_m", "") in (None, "") or c.get("giocatore_x_m", "") in (None, ""):
+            continue
+        esito, d, riga, prof = dentro_fuori(c.get("colpo"), float(c["rimbalzo_trovato_x_m"]),
+                                            float(c["rimbalzo_trovato_y_m"]), float(c["giocatore_x_m"]))
+        c.update({"dentro_fuori": esito, "distanza_riga_m": round(d, 2), "riga_vicina": riga, "profondita": prof})
     return colpi
 
 

@@ -37,6 +37,7 @@ video ──> analyze.py (già esistente) ──> tracking.csv: posa del giocato
             dà:  velocità d'uscita in km/h, punto di contatto in metri, rimbalzo previsto
                    │
                    └──> video con la scritta in km/h
+                          + metriche della sessione e scheda per l'allievo (riepilogo.py, 8.9)
 ```
 
 ---
@@ -448,7 +449,25 @@ Il servizio resta sui piedi (il lato decide il riquadro: dove sta chi serve). Ne
 
 Prova A/B, prima con il centro di 1 m: sui quattro video cambia solo il 418 ("lungo linea" → "dal centro verso sinistra"); Nicola, Djokovic e swing_vision restano con le stesse direzioni (su swing_vision 553 cambiano solo contatto, arrivo e angolo, perché la stima dal rimbalzo ora parte dal contatto della ricerca estesa). Il 717 resta "lungo linea": contatto coperto, partenza dalla traiettoria a x 7,69 (piedi 7,53). Poi la larghezza del centro: con 1 m, con i terzi e con 1,6 m le classi sui quattro video sono uguali; con 2 m quattro colpi cambiano in peggio (alcaraz 577 e 1152, tirati dall'angolo, diventano "dal centro"; Nicola 223 e swing 412 diventano "centrale"). Resta quindi il terzo centrale.
 
-### 8.8 Cosa ho provato e scartato
+### 8.8 Dentro o fuori e palla corta (1° ottobre)
+
+Dal rimbalzo trovato si dice dove è caduta la pallina: dentro o fuori (dritti e rovesci sul campo singolo avversario; servizio nel riquadro in diagonale; la riga conta dentro; si decide sempre, scelta dell'utente) e la profondità (corta entro 3 m dalla rete, profonda negli ultimi 3 m, media). Nuove colonne `dentro_fuori`, `distanza_riga_m`, `riga_vicina`, `profondita`; sul video una riga in più nell'etichetta e il bordo rosso del pallino se è fuori.
+
+Il punto debole è la profondità vicino al fondo lontano. Con la camera a 2,2 m il campo lontano è schiacciato contro la rete: nell'immagine di alcaraz la riga di fondo lontana è a 3 pixel dal punto in cui il dritto 418 rimbalza, e 3 pixel lì valgono 0,7 m. Per questo quel "fuori lungo di 0,7 m" non è sicuro. Un pixel vale circa 0,27-0,30 m vicino al fondo, 0,15 m vicino alla rete; di lato circa 2 cm. Con una camera più alta e più indietro (Djokovic: 3,2 m, 13,6 m dietro il fondo, 4K) un pixel vale 0,06 m. Risultati: tutti i rimbalzi trovati sono dentro tranne alcaraz 418; nessuna palla corta nei video di prova (sono scambi da fondo).
+
+### 8.9 Velocità media, metriche della sessione e scheda (2 ottobre)
+
+Tre richieste dell'utente, insieme.
+
+**La velocità media del volo.** È la distanza a terra dal contatto al rimbalzo diviso il tempo di volo: quella che mostra SwingVision (per il servizio di Nicola 83 km/h, contro i nostri 116 d'uscita). Non serviva un calcolo nuovo: nelle stime dal rimbalzo è il dato di partenza ("media fino al rimbalzo" nella nota); per i colpi misurati bastano il contatto del calcolo e il rimbalzo del passo 6. `velocita_rimbalzo.py` la scrive nella colonna `velocita_media_kmh` (passo 7). Sul video sta in piccolo sotto la velocità d'uscita. La media è sempre più bassa dell'uscita, perché l'aria frena la pallina: sui video di prova il 76-87%. Su swing_vision 412 invece viene 93 contro 90 misurati: una delle due misure è sbagliata (dalla media il dritto sarebbe sui 120 km/h, quindi probabilmente i 90 sono bassi). Lì la media non si mostra e la nota lo dice; i 90 km/h restano, come deciso (vedi 8.10, l'ultimo punto).
+
+**Le metriche.** `riepilogo.py` conta per tipo di colpo dentro, fuori ed esito non visto, con queste scelte dell'utente: buono = dentro, errore = fuori, rimbalzo non visto = non conta. Restano fuori dal conto i colpi senza velocità né direzione (sul video in grigio), che nei video di prova sono falsi colpi (alcaraz 246 e 1302) o un colpo coperto del tutto (swing_vision 1379). Alcaraz: 6 dentro su 7 con esito (dritti 3/4, rovesci 2/2, servizio 1/1), 1 errore (il 418, lungo, che però è al limite della precisione: 8.8).
+
+**Il video e la scheda.** Sulla mappa la freccia ora si allunga dal colpo al rimbalzo con il tempo vero del volo, e il pallino del rimbalzo spunta nel fotogramma in cui la pallina tocca terra, con un'onda attorno; nello stesso momento compaiono nell'etichetta dentro/fuori e la media (il loro posto è riservato da prima, così non si sposta niente). In alto a destra un contatore (dentro, fuori, colpi per tipo) che si aggiorna a ogni colpo e a ogni rimbalzo. Alla fine del video 6 secondi con la scheda della sessione, che viene salvata anche come `<video>_scheda.png` per l'allievo. La scheda usa i colori del video un po' più scuri, controllati con un programma per chi confonde i colori, e in più forme diverse sulla mappa (cerchio dritto, rombo rovescio, quadrato servizio). Per le scritte usa il carattere DejaVu, che c'è con matplotlib sia su Colab sia sul PC (serve per le lettere accentate, che i caratteri di OpenCV non hanno).
+
+Prova A/B sui quattro video con la catena completa: tutte le colonne di prima identiche; cambiano solo la colonna nuova e la nota di swing_vision 412.
+
+### 8.10 Cosa ho provato e scartato
 
 - **Ripartire a cercare la pallina dopo 8 frame vuoti** invece di arrendersi: rompeva il rovescio di Nicola.
 - **Usare la ricerca estesa anche per i km/h**: velocità troppo basse (vedi sopra).

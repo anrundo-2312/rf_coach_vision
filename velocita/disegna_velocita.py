@@ -1,14 +1,17 @@
 """
 disegna_velocita.py - riscrive il video con, per ogni colpo del giocatore,
 tipo di colpo, velocita' di uscita in km/h e direzione, piu' una piccola
-mappa del campo vista dall'alto con da dove parte il colpo e dove va.
+mappa del campo vista dall'alto con da dove parte il colpo e dove va, un
+contatore dei colpi in alto a destra e, alla fine, la scheda della sessione.
 
     python velocita/disegna_velocita.py --video inputs/<video>.mp4
 
 Legge outputs/dati/<video>_velocita_punti.json (velocita_uscita.py,
 direzione_nascosta.py, velocita_rimbalzo.py) e scrive
 outputs/video/<video>_velocita.mp4 in H.264, cosi' si vede anche nel browser.
-Il video di partenza e' quello originale: niente px/s.
+Il video di partenza e' quello originale: niente px/s. Con riepilogo.py
+scrive anche, in outputs/dati, <video>_riepilogo.csv/.json e
+<video>_scheda.png (le metriche della sessione e la scheda per l'allievo).
 
 Cosa compare per ogni colpo:
   - "uscita X km/h": velocita' misurata subito dopo il colpo (velocita_uscita.py);
@@ -16,42 +19,81 @@ Cosa compare per ogni colpo:
     (velocita_rimbalzo.py), meno precisa: margine circa +-15%;
   - "circa X km/h (rimbalzo ricostruito)": il rimbalzo era coperto ed e' stato
     ricostruito dalle curve prima e dopo (velocita_rimbalzo.py): margine circa +-20%;
+  - sotto, in piccolo, "media X km/h": la velocita' media del volo, dal colpo
+    al rimbalzo (velocita_media_kmh), se il rimbalzo e' stato trovato;
   - "km/h non disponibile" con la direzione: la velocita' non si puo' misurare
     (pallina coperta o mossa al colpo) ma la direzione si';
   - "km/h non disponibile" in grigio: niente di affidabile.
+  - sotto la direzione, dove e' caduta la pallina se il rimbalzo e' stato trovato:
+    "dentro" (con "palla corta" o "profonda"), "fuori: lunga", "fuori: larga"...
+  La riga dentro/fuori e la media compaiono quando la pallina tocca terra
+  (RIVELA_AL_RIMBALZO; il loro posto nell'etichetta c'e' gia' da prima, cosi'
+  le righe non si spostano).
 I pallini gialli sono i punti della pallina usati per il calcolo.
 
 La mappa in basso a sinistra: campo visto dall'alto, giocatore in basso. Pallino
-del colore del colpo = contatto; freccia = direzione, fino al punto del
-rimbalzo se e' stato trovato, altrimenti fino a 21 m (nel servizio fino al
-rimbalzo previsto); fascia grigia = centro (terzo centrale del singolo); nel
-servizio il riquadro diviso in tre, con la fascia colpita evidenziata.
-Pallino giallo bordato di nero = dove la pallina ha rimbalzato nel campo
-avversario (visto da TrackNet o trovato con il colore); cerchio giallo vuoto =
-rimbalzo ricostruito (era coperto); pallino bianco = rimbalzo del servizio
-previsto dal calcolo, quando quello vero non si trova.
+del colore del colpo = contatto; la freccia parte al colpo e si allunga mentre
+la pallina vola, fino al punto del rimbalzo se e' stato trovato (arriva li'
+nel fotogramma del rimbalzo), altrimenti fino a 21 m in mezzo secondo (nel
+servizio fino al rimbalzo previsto); fascia grigia = centro (terzo centrale
+del singolo); nel servizio il riquadro diviso in tre, con la fascia colpita
+evidenziata. Quando la pallina tocca terra spunta il pallino del rimbalzo,
+con un'onda che si allarga: giallo bordato di nero = rimbalzo visto (TrackNet
+o colore), cerchio giallo vuoto = rimbalzo ricostruito (era coperto), bordo
+rosso = fuori; pallino bianco = rimbalzo del servizio previsto dal calcolo,
+quando quello vero non si trova.
+
+Il contatore in alto a destra: per ogni tipo di colpo quanti dentro, quanti
+fuori e quanti colpi finora (riepilogo.py: si contano i colpi con una velocita'
+o una direzione). "colpi" sale al colpo, "dentro"/"fuori" quando la pallina
+tocca terra; il numero che cambia si illumina per un attimo. I colpi con
+l'esito non visto contano solo in "colpi".
+
+Alla fine del video, per FINALE_S secondi, la scheda della sessione
+(riepilogo.scheda) sopra l'ultimo fotogramma sfocato.
 """
 
 import argparse
 import json
 import os
 import subprocess
+import sys
 
 import cv2
 import numpy as np
 
-DURATA_S = 1.7                 # quanto resta la scritta dopo il contatto
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import riepilogo  # noqa: E402
+
+DURATA_S = 1.7                 # quanto resta la scritta dopo il contatto...
+DOPO_RIMBALZO_S = 1.0          # ...e almeno quanto dopo il rimbalzo trovato
+FRECCIA_SENZA_RIMBALZO_S = 0.5 # senza rimbalzo trovato la freccia arriva a 21 m in mezzo secondo
+SPUNTA_S = 0.35                # pallino del rimbalzo: si gonfia e torna normale in 0,35 s
+ONDA_S = 0.6                   # l'onda attorno al pallino si allarga e sparisce in 0,6 s
+COMPARSA_S = 0.25              # dentro/fuori e media: dissolvenza in entrata
+RIVELA_AL_RIMBALZO = True      # False: dentro/fuori e media compaiono subito, al colpo
+LAMPO_S = 0.7                  # contatore: quanto resta illuminato il numero che cambia
+FINALE_S = 6.0                 # scheda della sessione alla fine del video
 LARGHEZZA_MAX = 1920
 COLORI = {"dritto": (60, 200, 60), "rovescio": (255, 170, 60), "servizio": (0, 200, 255)}
 F = cv2.FONT_HERSHEY_SIMPLEX
 GIALLO = (0, 230, 255)         # come i pallini dei punti usati
+ROSSO = (0, 0, 230)
+VERDE_OK = (12, 163, 12)       # contatore: dentro
+ROSSO_KO = (59, 59, 208)       # contatore: fuori
+
+# stili delle righe dell'etichetta: (scala, spessore, grigio del testo)
+STILI = {"nome": (1.5, 3, 255), "valore": (2.0, 5, 255), "sotto": (1.0, 2, 215),
+         "riga": (1.1, 3, 255), "nota": (0.8, 2, 200)}
 
 
 def etichetta(fr, righe, colore):
-    """righe: il nome del colpo, poi le righe principali; l'ultima (nota) in piccolo e grigio."""
+    """
+    righe: lista di (testo, stile, visibilita' 0-1). Una riga con visibilita' 0 tiene il suo posto ma
+    non si vede (compare piu' tardi, al rimbalzo); tra 0 e 1 e' in dissolvenza.
+    """
     x0, y0 = 30, 30
-    stili = [(1.5, 3)] + [(2.0 if i == 0 else 1.1, 5 if i == 0 else 3) for i in range(len(righe) - 2)] + [(0.8, 2)]
-    dims = [cv2.getTextSize(t, F, s, k)[0] for t, (s, k) in zip(righe, stili)]
+    dims = [cv2.getTextSize(t, F, STILI[s][0], STILI[s][1])[0] for t, s, _ in righe]
     W = max(d[0] for d in dims) + 40
     H = sum(d[1] for d in dims) + 22 * len(dims) + 20
     ov = fr.copy()
@@ -59,25 +101,111 @@ def etichetta(fr, righe, colore):
     fr[:] = cv2.addWeighted(ov, 0.6, fr, 0.4, 0)
     cv2.rectangle(fr, (x0, y0), (x0 + 10, y0 + H), colore, -1)
     y = y0 + 10
-    for i, (t, (s, k), d) in enumerate(zip(righe, stili, dims)):
+    for (t, s, vis), d in zip(righe, dims):
         y += d[1] + 22
-        cv2.putText(fr, t, (x0 + 25, y), F, s, (200, 200, 200) if i == len(righe) - 1 else (255, 255, 255), k, cv2.LINE_AA)
+        if vis <= 0:
+            continue
+        scala, spess, g = STILI[s]
+        if vis >= 1:
+            cv2.putText(fr, t, (x0 + 25, y), F, scala, (g, g, g), spess, cv2.LINE_AA)
+        else:
+            a, b = y - d[1] - 6, y + 10           # solo la striscia della riga
+            ov = fr[a:b].copy()
+            cv2.putText(ov, t, (x0 + 25, d[1] + 6), F, scala, (g, g, g), spess, cv2.LINE_AA)
+            fr[a:b] = cv2.addWeighted(ov, vis, fr[a:b], 1 - vis, 0)
 
 
-def mappa(fr, colpo):
+def esito_rimbalzo(c):
+    """Riga di testo sul rimbalzo trovato (velocita_rimbalzo.py) o None."""
+    esito = c.get("dentro_fuori", "")
+    if esito == "dentro":
+        return "dentro" + {"corta": ", palla corta", "profonda": ", profonda"}.get(c.get("profondita", ""), "")
+    if esito == "fuori":
+        return "fuori: " + riepilogo.motivo_fuori(c)
+    return None
+
+
+def rimbalzo_frame(c):
+    """Frame del rimbalzo trovato o None."""
+    f = c.get("rimbalzo_trovato_frame")
+    return None if f in (None, "") else int(f)
+
+
+def comparsa(c, n, fps):
+    """Visibilita' (0-1) di dentro/fuori e media: dissolvenza dal fotogramma del rimbalzo."""
+    fb = rimbalzo_frame(c)
+    if not RIVELA_AL_RIMBALZO or fb is None:
+        return 1.0
+    return float(np.clip((n - fb) / max(1.0, COMPARSA_S * fps) + 1e-9, 0, 1)) if n >= fb else 0.0
+
+
+def righe_colpo(c, n, fps):
+    """(righe dell'etichetta, colore) per un colpo, all'istante n."""
+    vis = comparsa(c, n, fps)
+    media = c.get("velocita_media_kmh", "")
+    riga_media = [(f"media {media} km/h", "sotto", vis)] if media not in ("", None) else []
+    e = esito_rimbalzo(c)
+    riga_esito = [(e, "riga", vis)] if e else []
+    colore = COLORI.get(c["colpo"], (200, 200, 200))
+    nome = (c["colpo"].upper(), "nome", 1)
+    if c.get("velocita_uscita_kmh", "") != "":
+        righe = [nome, (f"uscita {c['velocita_uscita_kmh']} km/h", "valore", 1)] + riga_media
+        if c.get("direzione"):
+            righe.append((c["direzione"], "riga", 1))
+        nota = "margine circa +-20 km/h" + (" - calibrazione standard" if c.get("calibrazione") == "standard" else "")
+        return righe + riga_esito + [(nota, "nota", 1)], colore
+    if c.get("velocita_rimbalzo_kmh", "") != "":
+        # stima dal rimbalzo nel campo avversario (velocita_rimbalzo.py)
+        if str(c.get("nota", "")).startswith("velocita' stimata dal rimbalzo ricostruito"):
+            v, nota = f"circa {c['velocita_rimbalzo_kmh']} km/h (rimbalzo ricostruito)", "rimbalzo coperto, ricostruito: margine circa +-20%"
+        else:
+            v, nota = f"circa {c['velocita_rimbalzo_kmh']} km/h (dal rimbalzo)", "stima dal rimbalzo: margine circa +-15%"
+        return [nome, (v, "valore", 1)] + riga_media + [(c["direzione"], "riga", 1)] + riga_esito + [(nota, "nota", 1)], colore
+    if c.get("direzione"):
+        # niente km/h, ma la direzione (direzione_nascosta.py o ricerca estesa)
+        perche = ("pallina mossa al colpo: solo direzione" if str(c.get("nota", "")).startswith("pallina mossa")
+                  else "pallina coperta al contatto: solo direzione")
+        return [nome, ("km/h non disponibile", "valore", 1), (c["direzione"], "riga", 1)] + riga_esito + [(perche, "nota", 1)], colore
+    motivo = ("misura non affidabile" if str(c.get("nota", "")).startswith("misura scartata")
+              else "pallina coperta dal giocatore")
+    return [nome, ("km/h non disponibile", "valore", 1), (motivo, "nota", 1)], (150, 150, 150)
+
+
+def _blend(img, disegna, alfa):
+    """Disegna su una copia e mescola con trasparenza alfa."""
+    if alfa <= 0:
+        return img
+    ov = img.copy()
+    disegna(ov)
+    return cv2.addWeighted(ov, alfa, img, 1 - alfa, 0)
+
+
+def _spunta(dt, r):
+    """Raggio del pallino dt secondi dopo il rimbalzo: si gonfia fino a 1,5 volte e torna normale."""
+    if dt < 0.12:
+        return max(1, int(round(r * (0.3 + 1.2 * dt / 0.12))))
+    if dt < SPUNTA_S:
+        return max(1, int(round(r * (1.5 - 0.5 * (dt - 0.12) / (SPUNTA_S - 0.12)))))
+    return r
+
+
+def mappa(fr, colpo, n, fps):
     """Campo visto dall'alto (lato del giocatore in basso) con partenza e freccia fino al rimbalzo
-    trovato o, se non c'e', fino a 21 m (servizio: fino al rimbalzo previsto)."""
+    trovato o, se non c'e', fino a 21 m (servizio: fino al rimbalzo previsto). n = fotogramma attuale:
+    la freccia cresce dal colpo al rimbalzo e il pallino spunta quando la pallina tocca terra."""
     m = 11                                     # pixel per metro
     w, h = int(13 * m), int(30.5 * m)          # da 5 m dietro il fondo vicino a 1,7 m oltre quello lontano
     img = np.full((h, w, 3), 35, np.uint8)
-    px = lambda x, y: (int((x + 1) * m), int(h - (y + 5.0) * m))
+    pxf = lambda x, y: ((x + 1) * m, h - (y + 5.0) * m)
+    px = lambda x, y: tuple(int(round(v)) for v in pxf(x, y))
     bianco = (230, 230, 230)
     for a, b in [((0, 0), (0, 23.77)), ((10.97, 0), (10.97, 23.77)), ((1.37, 0), (1.37, 23.77)),
                  ((9.60, 0), (9.60, 23.77)), ((0, 0), (10.97, 0)), ((0, 23.77), (10.97, 23.77)),
                  ((1.37, 5.485), (9.60, 5.485)), ((1.37, 18.285), (9.60, 18.285)), ((5.485, 5.485), (5.485, 18.285))]:
         cv2.line(img, px(*a), px(*b), bianco, 1, cv2.LINE_AA)
     cv2.line(img, px(-0.9, 11.885), px(11.9, 11.885), (0, 200, 255), 2)
-    trovato = colpo.get("rimbalzo_trovato_x_m") not in (None, "")
+    fb = rimbalzo_frame(colpo)
+    trovato = fb is not None and colpo.get("rimbalzo_trovato_x_m") not in (None, "")
     servizio = colpo["colpo"] == "servizio" and "rimbalzo_x_m" in colpo
     if servizio:
         # riquadro del servizio diviso in tre: al T, al corpo, esterno
@@ -104,32 +232,123 @@ def mappa(fr, colpo):
     xs, ys = colpo.get("_partenza_x_m", colpo["contatto_x_m"]), colpo["contatto_y_m"]
     col = COLORI.get(colpo["colpo"], (255, 255, 255))
     cv2.circle(img, px(xs, ys), 5, col, -1, cv2.LINE_AA)
-    # la freccia arriva al punto del rimbalzo, se trovato; se no fino a 21 m (nel servizio al rimbalzo
-    # previsto). La punta si ferma sul bordo del pallino, cosi' si vedono tutti e due.
+    f0 = int(colpo["frame"])
+    p0 = np.array(pxf(xs, ys))
     if trovato:
         xf, yf = float(colpo["rimbalzo_trovato_x_m"]), float(colpo["rimbalzo_trovato_y_m"])
-        p0, p1 = np.array(px(xs, ys), float), np.array(px(xf, yf), float)
+        p1 = np.array(pxf(xf, yf))
         lung = np.linalg.norm(p1 - p0)
-        fine = tuple(int(round(v)) for v in (p1 - (p1 - p0) / lung * 7 if lung > 14 else p1))
+        fine = p1 - (p1 - p0) / lung * 7 if lung > 14 else p1      # la punta si ferma sul bordo del pallino
+        f_arrivo = max(fb, f0 + 1)
     else:
-        fine = px(xa, ya)
-    cv2.arrowedLine(img, px(xs, ys), fine, col, 2, cv2.LINE_AA, tipLength=0.08)
-    if servizio and not trovato:
-        cv2.circle(img, px(xa, ya), 4, (255, 255, 255), -1, cv2.LINE_AA)     # rimbalzo previsto
-    if trovato:
-        # dove la pallina ha rimbalzato davvero: pieno se visto, vuoto se ricostruito
-        pb = px(float(colpo["rimbalzo_trovato_x_m"]), float(colpo["rimbalzo_trovato_y_m"]))
+        fine = np.array(pxf(xa, ya))
+        f_arrivo = f0 + max(1, int(round(FRECCIA_SENZA_RIMBALZO_S * fps)))
+    # la freccia si allunga mentre la pallina vola (un po' piu' piano alla fine: l'aria la frena)
+    p = float(np.clip((n - f0) / (f_arrivo - f0), 0, 1))
+    p = 1 - (1 - p) ** 1.25
+    punta = p0 + (fine - p0) * p
+    lung = float(np.linalg.norm(punta - p0))
+    if lung >= 2:
+        cv2.arrowedLine(img, px(xs, ys), tuple(int(round(v)) for v in punta), col, 2, cv2.LINE_AA,
+                        tipLength=min(0.5, 9 / lung))
+    if servizio and not trovato and n >= f_arrivo:
+        dt = (n - f_arrivo) / fps
+        cv2.circle(img, px(xa, ya), _spunta(dt, 4), (255, 255, 255), -1, cv2.LINE_AA)     # rimbalzo previsto
+    if trovato and n >= fb:
+        # dove la pallina ha rimbalzato davvero: spunta quando tocca terra, con un'onda attorno
+        dt = (n - fb) / fps
+        pb = px(xf, yf)
+        fuori = colpo.get("dentro_fuori") == "fuori"
+        if dt < ONDA_S:
+            raggio = int(round(7 + 20 * dt / ONDA_S))
+            img = _blend(img, lambda o: cv2.circle(o, pb, raggio, ROSSO if fuori else GIALLO, 2, cv2.LINE_AA),
+                         1 - dt / ONDA_S)
+        bordo = ROSSO if fuori else (0, 0, 0)
         if colpo.get("rimbalzo_trovato_come") == "ricostruito":
-            cv2.circle(img, pb, 6, (0, 0, 0), 4, cv2.LINE_AA)
-            cv2.circle(img, pb, 6, GIALLO, 2, cv2.LINE_AA)
+            r = _spunta(dt, 6)
+            cv2.circle(img, pb, r, bordo, 4, cv2.LINE_AA)
+            cv2.circle(img, pb, r, GIALLO, 2, cv2.LINE_AA)
         else:
-            cv2.circle(img, pb, 7, (0, 0, 0), -1, cv2.LINE_AA)
-            cv2.circle(img, pb, 5, GIALLO, -1, cv2.LINE_AA)
+            # bordo rosso se la pallina e' fuori
+            cv2.circle(img, pb, _spunta(dt, 7), bordo, -1, cv2.LINE_AA)
+            cv2.circle(img, pb, _spunta(dt, 5), GIALLO, -1, cv2.LINE_AA)
     H, W = fr.shape[:2]
     s = H / 1080
     img = cv2.resize(img, None, fx=s, fy=s)
     y0, x0 = H - img.shape[0] - int(20 * s), int(20 * s)
     fr[y0:y0 + img.shape[0], x0:x0 + img.shape[1]] = img
+
+
+# ------------------------------------------------------------------ contatore
+def eventi_contatore(colpi):
+    """Per ogni colpo contato (riepilogo.ha_dati): (tipo, frame del colpo, esito, frame del rimbalzo)."""
+    ev = []
+    for c in colpi:
+        if riepilogo.ha_dati(c):
+            ev.append((c["colpo"], int(c["frame"]), riepilogo.esito(c), rimbalzo_frame(c)))
+    return ev
+
+
+def contatore(fr, tipi, eventi, n, fps):
+    """Tabellina in alto a destra: per tipo di colpo dentro, fuori e colpi fino al fotogramma n."""
+    if not tipi:
+        return
+    H, W = fr.shape[:2]
+    s = H / 1080
+    cols = ["dentro", "fuori", "colpi"]
+    # conteggi e ultimo cambiamento di ogni casella
+    val, ultimo = {}, {}
+    for t in tipi:
+        for k in cols:
+            val[t, k], ultimo[t, k] = 0, -10 ** 9
+    for tipo, f, esito, fb in eventi:
+        if tipo not in tipi:
+            continue
+        if f < n:                                   # l'etichetta compare dal fotogramma dopo il colpo
+            val[tipo, "colpi"] += 1
+            ultimo[tipo, "colpi"] = max(ultimo[tipo, "colpi"], f + 1)
+        if esito and fb is not None and fb <= n:
+            val[tipo, esito] += 1
+            ultimo[tipo, esito] = max(ultimo[tipo, esito], fb)
+    nome_w, col_w, riga_h, testa_h, pad = int(170 * s), int(100 * s), int(52 * s), int(38 * s), int(18 * s)
+    Wb = pad * 2 + nome_w + col_w * len(cols)
+    Hb = pad * 2 + testa_h + riga_h * len(tipi)
+    x0, y0 = W - Wb - int(30 * s), int(30 * s)
+    box = fr[y0:y0 + Hb, x0:x0 + Wb]
+    box[:] = (box * 0.3).astype(np.uint8)          # fondo nero al 70%: qui i numeri sono piccoli
+    # intestazione delle colonne
+    for j, k in enumerate(cols):
+        cx = x0 + pad + nome_w + col_w * j + col_w // 2
+        tw = cv2.getTextSize(k, F, 0.7 * s, max(1, int(round(s))))[0][0]
+        cv2.putText(fr, k, (cx - tw // 2, y0 + pad + int(24 * s)), F, 0.7 * s, (190, 190, 190), max(1, int(round(s))), cv2.LINE_AA)
+    for i, t in enumerate(tipi):
+        yc = y0 + pad + testa_h + riga_h * i + riga_h // 2
+        q = int(7 * s)
+        cv2.rectangle(fr, (x0 + pad, yc - q), (x0 + pad + 2 * q, yc + q), COLORI.get(t, (200, 200, 200)), -1)
+        cv2.putText(fr, riepilogo.NOMI[t], (x0 + pad + int(26 * s), yc + int(11 * s)), F, 0.95 * s, (255, 255, 255),
+                    max(1, int(round(2 * s))), cv2.LINE_AA)
+        for j, k in enumerate(cols):
+            cx = x0 + pad + nome_w + col_w * j + col_w // 2
+            # il numero appena cambiato si illumina e torna normale in LAMPO_S
+            dt = (n - ultimo[t, k]) / fps
+            if 0 <= dt < LAMPO_S:
+                lampo = {"dentro": VERDE_OK, "fuori": ROSSO_KO, "colpi": (200, 200, 200)}[k]
+                a = 0.85 * (1 - dt / LAMPO_S)
+                xa_, xb_ = cx - col_w // 2 + int(8 * s), cx + col_w // 2 - int(8 * s)
+                ya_, yb_ = yc - riga_h // 2 + int(5 * s), yc + riga_h // 2 - int(5 * s)
+                cella = fr[ya_:yb_, xa_:xb_]
+                cella[:] = cv2.addWeighted(np.full_like(cella, lampo), a, cella, 1 - a, 0)
+            testo = str(val[t, k])
+            tw = cv2.getTextSize(testo, F, 1.2 * s, max(1, int(round(3 * s))))[0][0]
+            cv2.putText(fr, testo, (cx - tw // 2, yc + int(14 * s)), F, 1.2 * s, (255, 255, 255),
+                        max(1, int(round(3 * s))), cv2.LINE_AA)
+
+
+def fine_colpo(c, fps):
+    """Ultimo fotogramma in cui si vede l'etichetta del colpo."""
+    fb = rimbalzo_frame(c)
+    fine = int(c["frame"]) + int(DURATA_S * fps)
+    return max(fine, fb + int(DOPO_RIMBALZO_S * fps)) if fb is not None else fine
 
 
 def main():
@@ -150,53 +369,41 @@ def main():
     size = (int(W * s) // 2 * 2, int(H * s) // 2 * 2)
     tmp = uscita + ".tmp.mp4"
     out = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, size)
-    durata = int(DURATA_S * fps)
-    n = 0
+    fine = {id(c): fine_colpo(c, fps) for c in colpi}
+    rie = riepilogo.calcola(colpi, nome)
+    tipi = [r["colpo"] for r in rie["tipi"]]
+    eventi = eventi_contatore(colpi)
+    n, ultimo = 0, None
     while True:
         ok, fr = cap.read()
         if not ok:
             break
         n += 1
-        attivi = [c for c in colpi if c["frame"] < n <= c["frame"] + durata]
+        attivi = [c for c in colpi if c["frame"] < n <= fine[id(c)]]
         for c in attivi:
             for f, x, y in c.get("_punti", []):
                 if f <= n:
                     cv2.circle(fr, (int(x), int(y)), max(4, int(8 / s)), (0, 230, 255), max(2, int(2 / s)), cv2.LINE_AA)
         fr = cv2.resize(fr, size, interpolation=cv2.INTER_AREA)
+        ultimo = fr.copy()                      # senza le scritte: sfondo della scheda finale
         # se due colpi sono vicini, l'etichetta del piu' recente sostituisce l'altra (non si sovrappongono)
         for c in sorted(attivi, key=lambda c: c["frame"])[-1:]:
-            colore = COLORI.get(c["colpo"], (200, 200, 200))
-            if c.get("velocita_uscita_kmh", "") != "":
-                righe = [c["colpo"].upper(), f"uscita {c['velocita_uscita_kmh']} km/h"]
-                if c.get("direzione"):
-                    righe.append(c["direzione"])
-                righe.append("margine circa +-20 km/h" +
-                             (" - calibrazione standard" if c.get("calibrazione") == "standard" else ""))
-                etichetta(fr, righe, colore)
-                if c.get("direzione"):
-                    mappa(fr, c)
-            elif c.get("velocita_rimbalzo_kmh", "") != "":
-                # stima dal rimbalzo nel campo avversario (velocita_rimbalzo.py)
-                if str(c.get("nota", "")).startswith("velocita' stimata dal rimbalzo ricostruito"):
-                    righe = [c["colpo"].upper(), f"circa {c['velocita_rimbalzo_kmh']} km/h (rimbalzo ricostruito)",
-                             c["direzione"], "rimbalzo coperto, ricostruito: margine circa +-20%"]
-                else:
-                    righe = [c["colpo"].upper(), f"circa {c['velocita_rimbalzo_kmh']} km/h (dal rimbalzo)",
-                             c["direzione"], "stima dal rimbalzo: margine circa +-15%"]
-                etichetta(fr, righe, colore)
-                mappa(fr, c)
-            elif c.get("direzione"):
-                # niente km/h, ma la direzione (direzione_nascosta.py o ricerca estesa)
-                perche = ("pallina mossa al colpo: solo direzione" if str(c.get("nota", "")).startswith("pallina mossa")
-                          else "pallina coperta al contatto: solo direzione")
-                etichetta(fr, [c["colpo"].upper(), "km/h non disponibile", c["direzione"], perche], colore)
-                mappa(fr, c)
-            else:
-                motivo = ("misura non affidabile" if str(c.get("nota", "")).startswith("misura scartata")
-                          else "pallina coperta dal giocatore")
-                etichetta(fr, [c["colpo"].upper(), "km/h non disponibile", motivo], (150, 150, 150))
+            righe, colore = righe_colpo(c, n, fps)
+            etichetta(fr, righe, colore)
+            if c.get("direzione"):
+                mappa(fr, c, n, fps)
+        contatore(fr, tipi, eventi, n, fps)
         out.write(fr)
+    # scheda della sessione alla fine, sopra l'ultimo fotogramma sfocato (dissolvenza di mezzo secondo)
+    rie["durata_s"] = round(n / fps, 1) if fps else None
+    if ultimo is not None and FINALE_S > 0:
+        sch = riepilogo.scheda(rie, size[0], size[1], sfondo=ultimo)
+        dissolvenza = max(1, int(0.5 * fps))
+        for i in range(int(FINALE_S * fps)):
+            out.write(sch if i >= dissolvenza else cv2.addWeighted(sch, i / dissolvenza, ultimo, 1 - i / dissolvenza, 0))
     out.release()
+    for p in riepilogo.salva(rie, a.dati):
+        print("scritto", p)
     # H.264 (si vede anche nel browser e su Colab) se c'e' ffmpeg; altrimenti resta mp4v,
     # che si apre comunque con il lettore del PC.
     try:
@@ -206,7 +413,7 @@ def main():
     except (FileNotFoundError, subprocess.CalledProcessError):
         os.replace(tmp, uscita)
         print("ffmpeg non disponibile: video salvato in mp4v (si apre con il lettore del PC, non nel browser).")
-    print(f"{n} frame scritti in {uscita}")
+    print(f"{n} frame scritti in {uscita} (+ {FINALE_S:.0f} s di scheda finale)")
 
 
 if __name__ == "__main__":
