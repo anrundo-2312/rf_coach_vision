@@ -7,7 +7,7 @@ fotogramma viene mostrato nella cella del notebook e i clic li legge il
 browser (un pezzetto di JavaScript), poi tornano a Python. Punti, calcolo e
 file salvati sono gli stessi di calibra_campo.py.
 
-Nel notebook (cella 7c):
+Nel notebook (cella 4b, prima dell'analisi):
 
     import calibra_colab
     calibra_colab.calibra("inputs/<video>.mp4", fotogramma=0, cartella_drive=DRIVE_DIR)

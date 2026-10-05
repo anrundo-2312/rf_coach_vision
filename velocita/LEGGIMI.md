@@ -28,7 +28,7 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
   su un fotogramma. Serve solo per i video girati con la camera in una
   posizione diversa da quella standard (vedi sotto).
 - `calibra_colab.py` - la stessa calibrazione dentro il notebook di Colab
-  (cella 7c): i clic li legge il browser, calcolo e file sono quelli di
+  (cella 4b, prima dell'analisi): i clic li legge il browser, calcolo e file sono quelli di
   `calibra_campo.py`.
 - `palla_locale.py` - rilevatore della pallina per colore, attorno al
   giocatore, dove TrackNet la perde. Ignora il giallo fermo dello sfondo
@@ -87,7 +87,7 @@ colonna `calibrazione` dice quale ha usato, e sul video compare
 primo fotogramma con il campo della calibrazione disegnato in verde (su Colab
 compare sotto la cella 7b). Se le righe verdi cadono su quelle vere il
 telefono era messo bene; se no, le velocita' di quel video non sono
-affidabili e serve una calibrazione propria (cella 7c su Colab, oppure
+affidabili e serve una calibrazione propria (cella 4b su Colab, oppure
 `calibra_campo.py` sul PC).
 
 Quanto conta mettere il telefono esattamente come lo standard (simulazione:
@@ -112,18 +112,29 @@ I video girati in un altro modo (per esempio il video di Djokovic: camera
 
 ### Su Colab (consigliato: l'analisi su CPU e' lenta)
 
-Nel notebook `colab/rf_coach_colab.ipynb` le celle 6 (analisi) e 7 (colpi)
-come sempre, poi la 7b (velocita' e direzione), la 8 (salvataggio su Drive) e
-la 9 (anteprima). Se il telefono era messo nella posizione standard non serve
-altro: la 7b usa la calibrazione standard e mostra l'immagine di controllo.
+Nel notebook `colab/rf_coach_colab.ipynb` si sceglie il video nella cella 4b
+(`VIDEO`) e si fa Runtime -> Esegui tutto. Le uniche risposte servono nei
+primi minuti: l'autorizzazione di Drive (cella 2) e il controllo del campo
+(cella 4b). Dopo non serve toccare niente: analisi (6), colpi (7), velocita'
+e direzione (7b), salvataggio su Drive (8) e anteprima (9) vanno da sole.
 
-Solo se l'immagine di controllo non torna, o per i video girati in un altro
-modo, serve la calibrazione del video. Si fa nella cella 7c, direttamente su
-Colab: si mette `CALIBRA = True`, si cliccano i punti sul fotogramma che
-compare nella cella, e la cella salva la calibrazione anche su Drive in
-`calibrazioni/` (vale per le sessioni successive) e rifa' velocita' e video.
-Il calcolo dura meno di un secondo e non usa la GPU: il tempo e' solo quello
-dei clic, una volta per posizione della camera.
+La cella 4b (dal 5 ottobre), prima dell'analisi, mostra il primo fotogramma
+con il campo della calibrazione disegnato in verde:
+- se il video ha gia' la sua calibrazione (`calibrazioni/<video>.json` su
+  Drive) la usa e non chiede niente;
+- se no mostra la calibrazione standard e chiede se le righe verdi cadono su
+  quelle vere: `s` = si', si va avanti con la standard; `n` = si calibra
+  subito, cliccando i punti nella cella (vedi "Calibrazione del campo di un
+  video"); un numero = mostra quel fotogramma (se il giocatore copre le
+  righe). La calibrazione si salva anche su Drive in `calibrazioni/` e vale
+  per le sessioni successive.
+`CALIBRA = True` calibra comunque, `CALIBRA = False` non chiede niente
+(calibrazione del video se c'e', se no la standard). Prima la calibrazione era
+nella cella 7c, dopo l'analisi: per sapere se serviva bisognava aspettare la
+fine dell'analisi, circa mezz'ora per video. Il calcolo dura meno di un
+secondo e non usa la GPU: il tempo e' solo quello dei clic, una volta per
+posizione della camera. La 7b mostra di nuovo l'immagine di controllo, con la
+calibrazione usata.
 
 In alternativa si puo' fare sul PC (anche con il video solo su Drive):
 
@@ -132,7 +143,7 @@ python velocita/calibra_campo.py "G:/Il mio Drive/rf_coach_vision/inputs/<video>
 ```
 
 Il JSON finisce da solo su Drive in `calibrazioni/`; se la cella 4 era gia'
-stata eseguita, rieseguirla per portarlo su Colab, poi la 7b.
+stata eseguita, rieseguirla per portarlo su Colab, poi la 4b e la 7b.
 
 ### Sul PC
 
@@ -179,9 +190,9 @@ attorno al mouse. Tasti: clic = segna, S = non visibile, U = annulla,
 frecce o IJKL = sposta di un pixel l'ultimo punto, `,` e `.` = fotogramma
 precedente/successivo (se il giocatore copre le righe), F = fine, Esc = esci.
 
-Su Colab (cella 7c) i punti e i tasti sono gli stessi, con due differenze:
-il fotogramma si cambia con `FOTOGRAMMA` nella cella, e si puo' cliccare
-nella lente per correggere l'ultimo punto.
+Su Colab (cella 4b) i punti e i tasti sono gli stessi, con due differenze:
+il fotogramma si cambia scrivendone il numero alla domanda della cella (o con
+`FOTOGRAMMA`), e si puo' cliccare nella lente per correggere l'ultimo punto.
 
 Consigli:
 - almeno 6 punti, sparsi: vicino, rete, lontano. Le cime della rete e dei pali
@@ -384,6 +395,19 @@ rimbalzi in vista).
    mappa e come controllo. Se la direzione che darebbe il rimbalzo e'
    diversa da quella scritta, la nota lo dice ("il rimbalzo trovato ...
    darebbe ...").
+
+Eccezione per i colpi "solo direzione" (5 ottobre): li' il contatto l'ha gia'
+trovato la ricerca estesa di `velocita_uscita.py`, ma la velocita' calcolata
+li' non e' affidabile. Se il passo 6 trova il rimbalzo, la velocita' si stima
+dal contatto della riga al rimbalzo, come nei passi 4-5, senza risalire la
+traiettoria dal rimbalzo (palline ferme o un falso rimbalzo subito dopo il
+colpo la possono interrompere o allungare). Sul video "circa ... km/h (dal
+rimbalzo)", con la direzione dal rimbalzo. Prova A/B sui 6 video di prova:
+cambia solo Giorgio, dritto a 39,8 s, da solo direzione a circa 108 km/h
+(media del volo 86). Controllo sui 5 colpi in cui i passi 1-5 funzionano
+gia': con il contatto della riga si ottiene lo stesso valore o fino al 9% in
+meno (il contatto della riga e' 2-5 fotogrammi prima). `PUNTO4 = False` in
+cima a `velocita_rimbalzo.py` lo spegne.
 
 Il rimbalzo trovato (passi 1-6) e' nelle colonne `rimbalzo_trovato_x_m`,
 `rimbalzo_trovato_y_m`, `rimbalzo_trovato_frame` e `rimbalzo_trovato_come`

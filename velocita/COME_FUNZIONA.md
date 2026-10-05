@@ -233,13 +233,15 @@ Se un video ha la sua calibrazione (`calibrazioni/<video>.json`), si usa quella.
 
 ### 5.5 Calibrare su Colab: `calibra_colab.py`
 
-`calibra_campo.py` apre una finestra di OpenCV e legge mouse e tastiera, cosa che richiede uno schermo collegato al computer su cui gira il programma. Colab gira su un server di Google senza schermo, quindi lì la finestra non si apre. Per i video girati fuori dalla posizione standard c'è `calibra_colab.py`, la cella 7c del notebook, che cambia solo il modo di cliccare:
+`calibra_campo.py` apre una finestra di OpenCV e legge mouse e tastiera, cosa che richiede uno schermo collegato al computer su cui gira il programma. Colab gira su un server di Google senza schermo, quindi lì la finestra non si apre. Per i video girati fuori dalla posizione standard c'è `calibra_colab.py`, la cella 4b del notebook, che cambia solo il modo di cliccare:
 
 1. Python legge il fotogramma e lo manda al browser come JPEG, insieme all'elenco dei punti del campo (gli stessi 23 di `calibra_campo.py`).
 2. Un pezzetto di JavaScript disegna nella cella il fotogramma, la lente e lo schema del campo, e raccoglie i clic e i tasti. Le coordinate del clic vengono riportate ai pixel del fotogramma originale, anche se nel notebook l'immagine è rimpicciolita.
 3. Quando si preme F, i punti tornano a Python (`google.colab.output.eval_js` aspetta la fine dei clic). Da qui calcolo e salvataggio sono quelli di `calibra_campo.py`: stesso JSON, stessa immagine di controllo. Il JSON viene copiato anche su Drive in `calibrazioni/`, così la cella 4 lo riporta nelle sessioni successive.
 
 Il costo di calcolo è trascurabile: la stima della camera richiede circa 0,1 secondi di CPU e non usa la GPU. Il tempo è quello dei clic, una volta per ogni posizione della camera.
+
+**Prima dell'analisi (5 ottobre).** All'inizio la calibrazione era la cella 7c, dopo l'analisi: per vedere l'immagine di controllo e capire se serviva bisognava aspettare la fine dell'analisi, circa mezz'ora per video. Ora è la cella 4b, subito dopo la copia dei file da Drive: mostra il campo con la calibrazione che verrebbe usata e, se il video non ne ha una sua, chiede se le righe tornano (s = sì, n = calibro adesso, un numero = un altro fotogramma). Con «Esegui tutto», dopo questa risposta non serve toccare più niente.
 
 Prova: ho cliccato in un browser automatico i 7 punti del video di Nicola nelle posizioni già note. I punti sono tornati entro 1 pixel e la camera è uscita uguale: (5,44; −6,66; 2,16) m e focale 1418 px, contro (5,46; −6,66; 2,17) m e 1419 px.
 
@@ -459,7 +461,7 @@ Il punto debole è la profondità vicino al fondo lontano. Con la camera a 2,2 m
 
 Tre richieste dell'utente, insieme.
 
-**La velocità media del volo.** È la distanza a terra dal contatto al rimbalzo diviso il tempo di volo: quella che mostra SwingVision (per il servizio di Nicola 83 km/h, contro i nostri 116 d'uscita). Non serviva un calcolo nuovo: nelle stime dal rimbalzo è il dato di partenza ("media fino al rimbalzo" nella nota); per i colpi misurati bastano il contatto del calcolo e il rimbalzo del passo 6. `velocita_rimbalzo.py` la scrive nella colonna `velocita_media_kmh` (passo 7). Sul video sta in piccolo sotto la velocità d'uscita. La media è sempre più bassa dell'uscita, perché l'aria frena la pallina: sui video di prova il 76-87%. Su swing_vision 412 invece viene 93 contro 90 misurati: una delle due misure è sbagliata (dalla media il dritto sarebbe sui 120 km/h, quindi probabilmente i 90 sono bassi). Lì la media non si mostra e la nota lo dice; i 90 km/h restano, come deciso (vedi 8.13, il controllo col rimbalzo sui km/h misurati).
+**La velocità media del volo.** È la distanza a terra dal contatto al rimbalzo diviso il tempo di volo: quella che mostra SwingVision (per il servizio di Nicola 83 km/h, contro i nostri 116 d'uscita). Non serviva un calcolo nuovo: nelle stime dal rimbalzo è il dato di partenza ("media fino al rimbalzo" nella nota); per i colpi misurati bastano il contatto del calcolo e il rimbalzo del passo 6. `velocita_rimbalzo.py` la scrive nella colonna `velocita_media_kmh` (passo 7). Sul video sta in piccolo sotto la velocità d'uscita. La media è sempre più bassa dell'uscita, perché l'aria frena la pallina: sui video di prova il 76-87%. Su swing_vision 412 invece viene 93 contro 90 misurati: una delle due misure è sbagliata (dalla media il dritto sarebbe sui 120 km/h, quindi probabilmente i 90 sono bassi). Lì la media non si mostra e la nota lo dice; i 90 km/h restano, come deciso (vedi 8.14, il controllo col rimbalzo sui km/h misurati).
 
 **Le metriche.** `riepilogo.py` conta per tipo di colpo dentro, fuori ed esito non visto, con queste scelte dell'utente: buono = dentro, errore = fuori, rimbalzo non visto = non conta. Restano fuori dal conto i colpi senza velocità né direzione (sul video in grigio), che nei video di prova sono falsi colpi (alcaraz 246 e 1302) o un colpo coperto del tutto (swing_vision 1379). Alcaraz: 6 dentro su 7 con esito (dritti 3/4, rovesci 2/2, servizio 1/1), 1 errore (il 418, lungo, che però è al limite della precisione: 8.8).
 
@@ -506,7 +508,15 @@ Sul video Giorgio, a 45,7 s, il programma scriveva un "servizio" con la misura s
 
 **Prova A/B** (catena completa, 6 video): cambia solo Giorgio 1373, da "servizio" a "dritto", sempre con la misura scartata (il tocco non è un colpo). Le righe senza contatto visibile (falsi servizi alcaraz 1302 e Giorgio 32,3 s) non si possono controllare e restano come prima. `SERVIZIO_SOPRA_TESTA = False` spegne la regola.
 
-### 8.13 Cosa ho provato e scartato
+### 8.13 La velocità dal rimbalzo per i colpi «solo direzione» (5 ottobre)
+
+Nei colpi «solo direzione» il contatto c'è: l'ha trovato la ricerca estesa di `velocita_uscita.py`, che però dà una velocità troppo bassa e quindi non si mostra. La stima dal rimbalzo dei passi 1-5 di `velocita_rimbalzo.py` invece cerca il contatto risalendo dal rimbalzo lungo i punti di TrackNet, e qui spesso si ferma nel posto sbagliato. Sul dritto di Giorgio a 39,8 s prendeva come rimbalzo il salto da una pallina ferma alla pallina vera subito dopo il colpo, e si fermava lì; il rimbalzo vero (40,5 s) lo trovava solo il passo 6, che serviva solo per la mappa. In una prova senza palline ferme sul rovescio delle 18,4 s la risalita si fermava 0,7 s dopo il contatto vero e dava 231 km/h: sbagliato, ma dentro i limiti 30-250, quindi sarebbe stato mostrato.
+
+**La regola.** Se in un colpo «solo direzione» il passo 6 trova il rimbalzo, la velocità si stima dal contatto della riga (mezzo fotogramma dopo il frame della riga) al rimbalzo, con lo stesso calcolo dei passi 4-5 (`stima_da_contatto_esteso`): niente risalita. Sul video «circa X km/h (dal rimbalzo)», la direzione dal rimbalzo; con il rimbalzo ricostruito «(rimbalzo ricostruito)» e margine ±20%.
+
+**Prova A/B** (catena completa, 6 video): cambia solo Giorgio 39,8 s, da solo direzione a circa 108 km/h, media del volo 86 (rapporto 0,80, normale), direzione invariata. Le altre righe «solo direzione» (swing_vision 302, Giorgio 49,7 s) non hanno rimbalzo e restano così. **Controllo del metodo** sui 5 colpi dove i passi 1-5 funzionano già, rifacendo il calcolo con il contatto della riga: swing_vision 553 120 → 111, alcaraz 141 166 → 166, alcaraz 418 149 → 146, Giorgio 904 108 → 98, 1806 101 → 94. Stesso valore o fino al 9% in meno: il contatto della riga è 2-5 fotogrammi prima di quello trovato risalendo, quindi il volo è un po' più lungo. Quei colpi non cambiano: la regola vale solo dove prima non c'era nessuna velocità. `PUNTO4 = False` la spegne.
+
+### 8.14 Cosa ho provato e scartato
 
 - **Ripartire a cercare la pallina dopo 8 frame vuoti** invece di arrendersi: rompeva il rovescio di Nicola.
 - **Usare la ricerca estesa anche per i km/h**: velocità troppo basse (vedi sopra).

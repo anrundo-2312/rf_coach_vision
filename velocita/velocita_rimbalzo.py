@@ -67,6 +67,13 @@ Un rimbalzo non vale per due colpi.
    Non cambia ne' la velocita' ne' la direzione: il punto compare sulla mappa
    del video e serve da controllo. Se la direzione data dal rimbalzo e'
    diversa, la nota lo dice ("il rimbalzo trovato darebbe ...").
+   Eccezione: nei colpi "solo direzione" (contatto trovato dalla ricerca
+   estesa di velocita_uscita.py, velocita' non affidabile) il rimbalzo trovato
+   qui serve anche per la velocita': dal contatto della riga al rimbalzo, come
+   nei passi 4-5, senza risalire la traiettoria dal rimbalzo (che palline
+   ferme o un falso rimbalzo possono interrompere o allungare). Sul video
+   "circa X km/h (dal rimbalzo)", la direzione dal rimbalzo. PUNTO4 = False:
+   come prima.
 7. VELOCITA' MEDIA DEL VOLO (velocita_media_kmh): distanza a terra dal
    contatto al rimbalzo trovato diviso il tempo di volo, in km/h. Nelle stime
    dei passi 1-5 e' il dato da cui si ricava la velocita' d'uscita ("media fino
@@ -140,6 +147,8 @@ VOLO_S = (0.25, 1.6)
 ALTEZZA_CONTATTO = {"servizio": 2.6}   # m; tutti gli altri colpi 1,0 m
 NOTA_RIMBALZO = "velocita' stimata dal rimbalzo"
 NOTA_RICOSTRUITO = "velocita' stimata dal rimbalzo ricostruito"   # comincia come NOTA_RIMBALZO
+NOTA_ESTESA = "pallina mossa al colpo"     # righe "solo direzione" della ricerca estesa (velocita_uscita.py)
+PUNTO4 = True               # "solo direzione" + rimbalzo del passo 6 -> velocita' dal contatto della riga
 
 # passo 4: colore nel campo lontano (misure in px a 1080p, scalate con l'altezza del video)
 COLORE_HSV = ((22, 60, 100), (48, 255, 255))
@@ -477,6 +486,27 @@ def stima_ricostruita(t, tn, cam, riga, altezza_img, usati):
 
 
 # ------------------------------------------------------------------ passo 6
+def stima_da_contatto_esteso(t, tn, cam, c, x, y, fb, come):
+    """
+    Riga "solo direzione" (contatto trovato dalla ricerca estesa) con il rimbalzo trovato al passo 6:
+    velocita' dal contatto della riga (frame + 0,5) al rimbalzo, come nei passi 4-5 (velocita_da_volo). Non si
+    risale la traiettoria dal rimbalzo. (campi, frame del rimbalzo) o None se il volo o la velocita' non sono
+    plausibili.
+    """
+    fc = int(c["frame"])
+    v = velocita_da_volo(t, cam, c, fc + 0.5, vu.istante(t, fb), (x, y), tn)
+    if v is None:
+        return None
+    v0, kmh, media, volo, piedi, p0, partenza = v
+    ricostruito = come == "ricostruito"
+    nota = (f"{NOTA_RICOSTRUITO if ricostruito else NOTA_RIMBALZO} (margine circa {'+-20' if ricostruito else '+-15'}%), "
+            f"dal contatto della ricerca estesa: contatto ~frame {fc}, rimbalzo al frame {fb} a ({x:.1f}; {y:.1f}) m"
+            + (" (trovato con il colore)" if come == "colore" else "")
+            + f", volo {volo:.2f} s, media fino al rimbalzo {media:.0f} km/h")
+    punti = [(f, float(tn[f][0]), float(tn[f][1])) for f in range(fc + 1, fb + 1) if f in tn]
+    return riga_stima(c, v0, kmh, piedi, p0, (x, y), punti, nota, partenza, media), fb
+
+
 def rimbalzo_dopo_colpo(t, tn, cam, riga, video, cap, scala, altezza_img, usati):
     """
     Passo 6: solo il punto del rimbalzo nel campo avversario per un colpo che ha gia' una direzione.
@@ -641,6 +671,12 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             continue
         x, y, fb, come = r
         usati.add(fb)
+        if (PUNTO4 and nota.startswith(NOTA_ESTESA) and c.get("velocita_uscita_kmh", "") == ""
+                and c.get("velocita_rimbalzo_kmh", "") == ""):
+            s4 = stima_da_contatto_esteso(t, tn, cam, c, x, y, fb, come)
+            if s4 is not None:
+                applica(c, s4, "rimbalzo del passo 6 e contatto della ricerca estesa", come)
+                continue
         c.update({"rimbalzo_trovato_x_m": round(x, 2), "rimbalzo_trovato_y_m": round(y, 2),
                   "rimbalzo_trovato_frame": int(fb), "rimbalzo_trovato_come": come})
         d = direzione_dal_rimbalzo(c, x, y)
