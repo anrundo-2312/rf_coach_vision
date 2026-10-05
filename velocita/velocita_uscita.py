@@ -12,7 +12,9 @@ l'ha, usa quella standard, velocita/calibrazioni/standard.json (telefono messo
 come con SwingVision, vedi LEGGIMI.md). Scrive outputs/dati/<video>_velocita.csv,
 un colpo per riga, e outputs/dati/<video>_campo.jpg: il campo della
 calibrazione usata disegnato sul primo fotogramma, per controllare a colpo
-d'occhio che la camera fosse messa bene.
+d'occhio che la camera fosse messa bene. Scrive anche
+outputs/dati/<video>_palline_ferme.csv, i punti di TrackNet scartati come
+palline ferme (solo per disegnarli in grigio sul video).
 
 Passi:
 
@@ -23,13 +25,19 @@ Passi:
 2. PALLINA NELLA FINESTRA (palla_locale.py): TrackNet dove c'e', il
    rilevatore di colore attorno al giocatore dove TrackNet la perde. Il
    giallo fermo dello sfondo (borse, cartelli) non viene preso per la pallina.
+   Prima si tolgono i punti di TrackNet che sono palline ferme in campo
+   (palla_locale.tracknet_fermi: la stessa pallina c'e' anche 0,4-0,6 s prima
+   e dopo), e la traccia parte dal primo punto di TrackNet confermato da un
+   altro vicino, non da un punto isolato.
 
 3. CONTATTO. Cambio brusco del vettore spostamento della pallina (3 frame
    prima contro 3 frame dopo), con la pallina vicina a un polso e che DOPO si
    muove abbastanza veloce nell'immagine. L'ultima condizione scarta il
    rimbalzo della pallina dell'avversario davanti al giocatore, che
    nell'immagine sembra un colpo ma dopo la pallina continua ad arrivare
-   lentamente.
+   lentamente. Il tipo di colpo e' quello piu' votato dalla posa nei 16
+   frame fino al contatto; un "servizio" con la pallina chiaramente sotto la
+   testa al contatto non e' un servizio (colpo_al_contatto).
 
 4. VELOCITA' E DIREZIONE (rf_ball_exit_speed.exit_speed): traiettoria 3D dei
    ~1/3 di secondo dopo il contatto, con il contatto tenuto entro 1 m dal
@@ -49,8 +57,10 @@ Passi:
 6. CONTROLLO DEL RISULTATO. Il calcolo non cambia, si decide solo se
    mostrarlo: se la traiettoria 3D non spiega i punti della pallina (errore
    sopra 6 px, riportato a 1080p) oppure il risultato non e' da tennis
-   (velocita' fuori da 30-250 km/h, oppure un colpo da fondo con angolo oltre
-   45 gradi), velocita' e direzione non si scrivono e la nota dice il perche'.
+   (velocita' fuori da 30-250 km/h, oppure un angolo oltre il limite: dal punto
+   di contatto l'angolo verso la riga laterale del singolo, 0,5 m dopo la rete,
+   piu' 10 gradi, mai sotto 45; servizio escluso), velocita' e direzione non si
+   scrivono e la nota dice il perche'.
    Succede quando i punti non sono la pallina colpita (un'altra pallina, la
    racchetta gialla, un oggetto): vedi controlla_risultato.
 
@@ -99,6 +109,12 @@ SOGLIA_CAMBIO = 2.5         # cambio di velocita' minimo, altezze del giocatore 
 SOGLIA_DOPO = 2.4           # velocita' minima DOPO il contatto (scarta i rimbalzi)
 DIST_POLSO = 0.6            # pallina entro 0,6 altezze da un polso
 DISTANZA_MINIMA = 20        # due contatti piu' vicini sono lo stesso colpo
+# Il servizio si colpisce sopra la testa: un contatto che la posa chiama "servizio" ma con la pallina
+# chiaramente SOTTO la testa (piu' in basso del bordo alto del riquadro del giocatore di almeno
+# SERVIZIO_MARGINE altezze, nel frame del contatto e nei 2 prima) non e' un servizio (Giorgio 45,7 s:
+# lancio, la pallina tocca e poi la gioca). False = come prima.
+SERVIZIO_SOPRA_TESTA = True
+SERVIZIO_MARGINE = 0.05
 
 # Velocita'
 DURATA_DOPO_S = 1 / 3       # traiettoria usata dopo il contatto (20 frame a 60 fps)
@@ -144,7 +160,16 @@ INSIDE_M = 1.0              # piedi almeno 1 m oltre la riga centrale, dalla par
                             # arrivo: nel terzo laterale del campo avversario (FASCIA_CENTRO, regola dell'utente)
 SEPARAZIONE_MANO = 0.3      # per capire la mano: contatto ad almeno 0,3 m di lato dai piedi
 VELOCITA_PLAUSIBILE = (30, 250)  # km/h
-ANGOLO_MAX = 45.0           # gradi rispetto alle righe laterali, colpi da fondo (non il servizio)
+# Palline ferme (palla_locale.tracknet_fermi): si guardano solo i punti che, portati a terra,
+# cadono in campo o attorno (fino a ~8-10 m oltre le righe); sopra la recinzione no
+FERME_X = (-7.0, 18.0)
+FERME_Y = (-8.0, 34.0)
+# Angolo massimo (gradi rispetto alle righe laterali, servizio escluso): dal punto di contatto, l'angolo
+# verso la riga laterale del singolo dalla parte dove va la pallina, 0,5 m dopo la rete, piu' 10 gradi
+# di margine; mai sotto 45 (dal fondo resta 45: da li' quell'angolo e' al massimo ~34 gradi)
+ANGOLO_MAX = 45.0           # il minimo
+ANGOLO_MARGINE = 10.0       # gradi in piu' dell'angolo verso la riga laterale
+ANGOLO_DOPO_RETE = 0.5      # m oltre la rete: il punto della riga laterale preso come riferimento
 
 
 # ------------------------------------------------------------------ lettura
@@ -191,6 +216,21 @@ def finestre_colpi(classi, n_frame):
             if sum(1 for f in range(a, b + 1) if classi.get(f) not in (None, "attesa")) >= DURATA_MINIMA]
 
 
+def a_terra_in_campo(cam):
+    """Funzione pixel -> True se il pixel, portato a terra, cade nella zona FERME_X x FERME_Y."""
+    R, _ = cv2.Rodrigues(np.asarray(cam["rvec"], float))
+    C = -R.T @ np.asarray(cam["tvec"], float).ravel()
+    Ki = np.linalg.inv(cam["K"])
+
+    def a_terra(p):
+        ray = R.T @ Ki @ np.array([p[0], p[1], 1.0])
+        if ray[2] >= 0:                      # sopra l'orizzonte: non e' a terra
+            return False
+        g = C - C[2] / ray[2] * ray
+        return FERME_X[0] <= g[0] <= FERME_X[1] and FERME_Y[0] <= g[1] <= FERME_Y[1]
+    return a_terra
+
+
 # ------------------------------------------------------------------ passo 3
 def trova_contatti(traccia, t):
     """Frame (l'ultimo PRIMA del contatto) dei colpi del giocatore nella traccia."""
@@ -221,6 +261,39 @@ def trova_contatti(traccia, t):
         if all(abs(f - g) >= DISTANZA_MINIMA for g, _ in scelti):
             scelti.append((f, c))
     return sorted(f for f, _ in scelti)
+
+
+def pallina_sotto_la_testa(traccia, fc, t):
+    """True se nel frame del contatto e nei 2 prima la pallina e' sotto il bordo alto del riquadro del
+    giocatore di almeno SERVIZIO_MARGINE altezze (in tutti i frame in cui si vede). Senza dati: False."""
+    visti = 0
+    for f in range(fc - 2, fc + 1):
+        p = traccia.get(f)
+        b = t["box"][f - 1]
+        if p is None or not np.all(np.isfinite(b)) or b[3] <= b[1]:
+            continue
+        if p[1] < b[1] + SERVIZIO_MARGINE * (b[3] - b[1]):
+            return False
+        visti += 1
+    return visti > 0
+
+
+def colpo_al_contatto(classi, fc, traccia, t, a, b):
+    """
+    Tipo di colpo al contatto fc: la classe piu' votata nei 16 frame fino al contatto (come prima). Se e'
+    "servizio" ma la pallina e' chiaramente sotto la testa (pallina_sotto_la_testa) non e' un servizio: si
+    prende la piu' votata tra le altre classi, nei 16 frame o, se non ce ne sono, in tutta la finestra a..b.
+    """
+    voti = Counter(classi[f] for f in range(fc - 15, fc + 1) if classi.get(f) not in (None, "attesa"))
+    colpo = voti.most_common(1)[0][0] if voti else ""
+    if colpo == "servizio" and SERVIZIO_SOPRA_TESTA and pallina_sotto_la_testa(traccia, fc, t):
+        altri = [c for c, _ in voti.most_common() if c != "servizio"]
+        if not altri:
+            altri = [c for c, _ in Counter(classi[f] for f in range(a, b + 1)
+                                            if classi.get(f) not in (None, "attesa", "servizio")).most_common()]
+        if altri:
+            colpo = altri[0]
+    return colpo
 
 
 # ------------------------------------------------------------------ passo 4
@@ -500,11 +573,28 @@ def fine_tratto_piu_lungo(classi, a, b, colpo):
 
 
 # ------------------------------------------------------------------ principale
-def controlla_risultato(r, angolo, colpo, altezza_img):
+def limite_angolo(contatto, angolo):
+    """
+    Angolo massimo credibile (gradi, valore assoluto) per un colpo che parte da contatto (x, y in m)
+    verso il lato indicato dal segno di angolo: l'angolo dal contatto alla riga laterale del singolo
+    da quel lato, ANGOLO_DOPO_RETE m dopo la rete, piu' ANGOLO_MARGINE; mai sotto ANGOLO_MAX.
+    Uno strettino colpito da dentro il campo arriva a ~50 gradi; dal fondo il limite resta 45.
+    """
+    verso = 1.0 if angolo >= 0 else -1.0
+    riga = SINGOLO_X[1] if verso > 0 else SINGOLO_X[0]
+    dy = RETE_Y + ANGOLO_DOPO_RETE - float(contatto[1])
+    if dy <= 0:
+        return 90.0
+    verso_riga = float(np.degrees(np.arctan2((riga - float(contatto[0])) * verso, dy)))
+    return max(ANGOLO_MAX, verso_riga + ANGOLO_MARGINE)
+
+
+def controlla_risultato(r, angolo, colpo, altezza_img, frame=None, verbose=False, modo="normale"):
     """
     Motivi per non mostrare velocita' e direzione (lista vuota: risultato da mostrare).
     Sui colpi buoni l'errore della traiettoria e' 1-3 px a 1080p; quando i punti non sono
     la pallina colpita il fit li spiega male (15-35 px) e da' velocita' o angoli assurdi.
+    L'angolo massimo dipende dal punto di contatto (limite_angolo); il servizio non si controlla.
     """
     motivi = []
     errore = r["rms_px"] * 1080 / altezza_img
@@ -513,8 +603,16 @@ def controlla_risultato(r, angolo, colpo, altezza_img):
     lo, hi = VELOCITA_PLAUSIBILE
     if not lo <= r["exit_kmh"] <= hi:
         motivi.append(f"velocita' {r['exit_kmh']:.0f} km/h fuori da {lo}-{hi}")
-    if colpo != "servizio" and abs(angolo) > ANGOLO_MAX:
-        motivi.append(f"angolo {angolo:+.1f} gradi oltre {ANGOLO_MAX:.0f}")
+    limite = None
+    if colpo != "servizio":
+        limite = limite_angolo(r["impact_xyz_m"], angolo)
+        if abs(angolo) > limite:
+            motivi.append(f"angolo {angolo:+.1f} gradi oltre {limite:.0f}")
+    if verbose:
+        c = r["impact_xyz_m"]
+        print(f"  controllo {modo}: frame {frame} {colpo}, contatto ({c[0]:.1f}; {c[1]:.1f}) m, angolo {angolo:+.1f}, "
+              + (f"limite {limite:.1f}" if limite is not None else "servizio: angolo non controllato")
+              + (f" -> scartato: {'; '.join(motivi)}" if motivi else " -> ok"))
     return motivi
 
 
@@ -541,23 +639,29 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     tracknet = {int(f): tuple(p) for f, p, v in zip(t["frame"], t["palla"], t["vista"]) if v}
     altezze = {int(f): float(b[3] - b[1]) for f, b in zip(t["frame"], t["box"]) if np.isfinite(b[3] - b[1])}
 
+    a_terra = a_terra_in_campo(cam)
+    ferme = {}                  # punti di TrackNet scartati come palline ferme, per il video (disegna_velocita.py)
     colpi = []
     for a, b in finestre_colpi(classi, n):
         primo, ultimo = max(1, a - MARGINE_FINESTRA), min(n, b + MARGINE_FINESTRA)
         inizio_righe = len(colpi)
-        traccia = palla_locale.segui(video, primo, ultimo, tracknet, altezze)
+        # i punti di TrackNet su palline ferme in campo non sono la pallina in gioco
+        fermi = palla_locale.tracknet_fermi(video, primo, ultimo, tracknet, altezze, t["fps"], a_terra)
+        tn = {f: p for f, p in tracknet.items() if f not in fermi}
+        ferme.update({f: tracknet[f] for f in fermi})
+        traccia = palla_locale.segui(video, primo, ultimo, tn, altezze)
         contatti = trova_contatti(traccia, t) if traccia else []
         if verbose:
             print(f"finestra {a}-{b}: pallina in {len(traccia)} frame "
-                  f"({sum(1 for v in traccia.values() if v[2] == 'locale')} dal rilevatore locale), contatti {contatti}")
+                  f"({sum(1 for v in traccia.values() if v[2] == 'locale')} dal rilevatore locale), contatti {contatti}"
+                  + (f", {len(fermi)} punti di TrackNet su palline ferme tolti" if fermi else ""))
         for fc in contatti:
-            voti = [classi[f] for f in range(fc - 15, fc + 1) if classi.get(f) not in (None, "attesa")]
-            colpo = Counter(voti).most_common(1)[0][0] if voti else ""
+            colpo = colpo_al_contatto(classi, fc, traccia, t, a, b)
             riga = {"frame": fc, "tempo_s": round(float(t["tempo"][fc - 1]), 3), "colpo": colpo,
                     "calibrazione": fonte}
             try:
                 r, piedi, angolo, x_arr, direzione, rimbalzo, usati = misura(t, traccia, fc, cam)
-                motivi = controlla_risultato(r, angolo, colpo, altezza_img)
+                motivi = controlla_risultato(r, angolo, colpo, altezza_img, fc, verbose)
                 if motivi:
                     # calcolo fatto ma non credibile: niente velocita' ne' direzione
                     riga.update({"punti_usati": r["n_points"], "errore_px": round(r["rms_px"], 1),
@@ -594,10 +698,21 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             colpi.append({"frame": fine, "tempo_s": round(float(t["tempo"][fine - 1]), 3), "colpo": colpo,
                           "calibrazione": fonte, "nota": "contatto non visibile: pallina coperta o persa"})
         if not any(r.get("velocita_uscita_kmh", "") != "" for r in colpi[inizio_righe:]):
-            solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam, fonte,
+            solo_direzione(video, t, classi, a, b, primo, ultimo, tn, altezze, cam, fonte,
                            altezza_img, colpi, inizio_righe, verbose)
     colpi.sort(key=lambda r: r["frame"])
+    salva_palline_ferme(os.path.join(cartella_dati, nome + "_palline_ferme.csv"), ferme, t)
     return nome, colpi
+
+
+def salva_palline_ferme(percorso, ferme, t):
+    """<video>_palline_ferme.csv: i punti di TrackNet scartati come palline ferme (palla_locale.tracknet_fermi),
+    uno per riga. Non entra in nessun calcolo: serve solo a disegnarli in grigio sul video."""
+    with open(percorso, "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["frame", "tempo_s", "pallina_x", "pallina_y"])
+        for f in sorted(ferme):
+            w.writerow([f, round(float(t["tempo"][f - 1]), 3), round(float(ferme[f][0]), 1), round(float(ferme[f][1]), 1)])
 
 
 def seme_lancio(t, tracknet, primo, ultimo):
@@ -635,8 +750,7 @@ def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam
     contatti = trova_contatti(traccia, t) if traccia else []
     righe = colpi[inizio_righe:]
     for fc in contatti:
-        voti_c = [classi[f] for f in range(fc - 15, fc + 1) if classi.get(f) not in (None, "attesa")]
-        colpo = Counter(voti_c).most_common(1)[0][0] if voti_c else ""
+        colpo = colpo_al_contatto(classi, fc, traccia, t, a, b)
         riga = {"frame": fc, "tempo_s": round(float(t["tempo"][fc - 1]), 3), "colpo": colpo, "calibrazione": fonte}
         try:
             r, piedi, angolo, x_arr, direzione, rimbalzo, usati = misura(t, traccia, fc, cam)
@@ -648,7 +762,7 @@ def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam
                 colpi.append(riga)
                 righe = [riga]
             continue
-        if controlla_risultato(r, angolo, colpo, altezza_img):
+        if controlla_risultato(r, angolo, colpo, altezza_img, fc, verbose, "estesa"):
             continue
         partenza = r["_partenza"]
         if colpo == "servizio":

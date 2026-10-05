@@ -108,7 +108,6 @@ def compute_ball_trajectory(video_file, mode="weight", force=False):
 
     if result.returncode == 0 and os.path.exists(raw_csv):
         print(f"TrackNet ({mode}) completato in {minutes:.1f} minuti.")
-        sincronizza_drive.copia(csv_path, "pred_result")
         try:
             os.replace(raw_csv, csv_path)  # sovrascrive l'eventuale risultato precedente
         except PermissionError:
@@ -116,7 +115,11 @@ def compute_ball_trajectory(video_file, mode="weight", force=False):
             print(f"[pallina] Non posso sovrascrivere {os.path.basename(csv_path)}: "
                   "e' aperto in un altro programma? Chiudilo. Per ora uso il risultato "
                   f"nuovo da {os.path.basename(raw_csv)}.")
+            sincronizza_drive.copia(raw_csv, "pred_result")  # su Drive va il risultato nuovo
             return _read_positions(raw_csv)
+        # Copia su Drive DOPO la sostituzione: cosi' va il risultato appena
+        # calcolato, non quello vecchio (o niente, alla prima analisi).
+        sincronizza_drive.copia(csv_path, "pred_result")
 
     if result.returncode != 0 or not os.path.exists(csv_path):
         print(

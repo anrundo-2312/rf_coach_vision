@@ -7,7 +7,8 @@ contatore dei colpi in alto a destra e, alla fine, la scheda della sessione.
     python velocita/disegna_velocita.py --video inputs/<video>.mp4
 
 Legge outputs/dati/<video>_velocita_punti.json (velocita_uscita.py,
-direzione_nascosta.py, velocita_rimbalzo.py) e scrive
+direzione_nascosta.py, velocita_rimbalzo.py), e per il tracking della pallina
+<video>_tracking.csv e <video>_palline_ferme.csv, e scrive
 outputs/video/<video>_velocita.mp4 in H.264, cosi' si vede anche nel browser.
 Il video di partenza e' quello originale: niente px/s. Le velocita' scritte
 sono quelle calcolate per riepilogo.CORREZIONE_VELOCITA (0,85: il 15% in meno,
@@ -32,7 +33,18 @@ Cosa compare per ogni colpo:
   La riga dentro/fuori e la media compaiono quando la pallina tocca terra
   (RIVELA_AL_RIMBALZO; il loro posto nell'etichetta c'e' gia' da prima, cosi'
   le righe non si spostano).
-I pallini gialli sono i punti della pallina usati per il calcolo.
+Il tracking della pallina (MOSTRA_TRACKING = True, acceso di default): per capire dove TrackNet
+vede la pallina e dove no, e quali punti sono entrati nel calcolo.
+  - anelli gialli: i punti visti da TrackNet (<video>_tracking.csv, solo fonte "tracknet": le
+    posizioni stimate da InpaintNet no) che il calcolo non ha usato, a scia: l'ultimo secondo
+    (SCIA_S), i piu' vecchi sbiaditi;
+  - anelli rossi: i punti usati per il calcolo del colpo (TrackNet o rilevatore di colore, sul video
+    non si distinguono), al posto dell'anello giallo, visibili per tutta la durata dell'etichetta.
+    Anelli gialli attorno al contatto senza anelli rossi = TrackNet c'era ma il calcolo non li ha usati;
+  - anelli grigi: punti di TrackNet scartati come palline ferme in campo (<video>_palline_ferme.csv,
+    scritto da velocita_uscita.py; si controllano solo nelle finestre dei colpi).
+  Il rosso nella mappa (bordo e onda del rimbalzo "fuori") e nel contatore resta com'e'.
+Con MOSTRA_TRACKING = False il video e' come prima: anelli gialli solo sui punti usati per il calcolo.
 
 La mappa in basso a sinistra: campo visto dall'alto, giocatore in basso. Pallino
 del colore del colpo = contatto; la freccia parte al colpo e si allunga mentre
@@ -57,6 +69,7 @@ Alla fine del video, per FINALE_S secondi, la scheda della sessione
 """
 
 import argparse
+import csv
 import json
 import os
 import subprocess
@@ -77,11 +90,16 @@ COMPARSA_S = 0.25              # dentro/fuori e media: dissolvenza in entrata
 RIVELA_AL_RIMBALZO = True      # False: dentro/fuori e media compaiono subito, al colpo
 LAMPO_S = 0.7                  # contatore: quanto resta illuminato il numero che cambia
 FINALE_S = 6.0                 # scheda della sessione alla fine del video
+MOSTRA_TRACKING = True         # scia dei punti di TrackNet, punti usati in rosso, palline ferme in grigio; False = come prima
+SCIA_S = 1.0                   # la scia dei punti di TrackNet: l'ultimo secondo...
+SCIA_MIN = 0.15                # ...con i punti piu' vecchi quasi trasparenti
 LARGHEZZA_MAX = 1920
+ALTEZZA_MIN = 720              # i video piu' piccoli (es. 640x360) si ingrandiscono a 720p: scritte e scheda leggibili
 COLORI = {"dritto": (60, 200, 60), "rovescio": (255, 170, 60), "servizio": (0, 200, 255)}
 F = cv2.FONT_HERSHEY_SIMPLEX
-GIALLO = (0, 230, 255)         # come i pallini dei punti usati
+GIALLO = (0, 230, 255)         # anelli dei punti di TrackNet (con MOSTRA_TRACKING False: i punti usati)
 ROSSO = (0, 0, 230)
+GRIGIO_FERMA = (170, 170, 170) # punti di TrackNet su palline ferme scartati
 VERDE_OK = (12, 163, 12)       # contatore: dentro
 ROSSO_KO = (59, 59, 208)       # contatore: fuori
 
@@ -94,27 +112,31 @@ def etichetta(fr, righe, colore):
     """
     righe: lista di (testo, stile, visibilita' 0-1). Una riga con visibilita' 0 tiene il suo posto ma
     non si vede (compare piu' tardi, al rimbalzo); tra 0 e 1 e' in dissolvenza.
+    Le misure sono pensate per 1080 righe e si scalano con l'altezza del fotogramma (a 1080p identiche).
     """
-    x0, y0 = 30, 30
-    dims = [cv2.getTextSize(t, F, STILI[s][0], STILI[s][1])[0] for t, s, _ in righe]
-    W = max(d[0] for d in dims) + 40
-    H = sum(d[1] for d in dims) + 22 * len(dims) + 20
+    k = fr.shape[0] / 1080
+    px = lambda v: int(round(v * k))
+    stile = lambda s: (STILI[s][0] * k, max(1, int(round(STILI[s][1] * k))), STILI[s][2])
+    x0, y0 = px(30), px(30)
+    dims = [cv2.getTextSize(t, F, stile(s)[0], stile(s)[1])[0] for t, s, _ in righe]
+    W = max(d[0] for d in dims) + px(40)
+    H = sum(d[1] for d in dims) + px(22) * len(dims) + px(20)
     ov = fr.copy()
     cv2.rectangle(ov, (x0, y0), (x0 + W, y0 + H), (0, 0, 0), -1)
     fr[:] = cv2.addWeighted(ov, 0.6, fr, 0.4, 0)
-    cv2.rectangle(fr, (x0, y0), (x0 + 10, y0 + H), colore, -1)
-    y = y0 + 10
+    cv2.rectangle(fr, (x0, y0), (x0 + px(10), y0 + H), colore, -1)
+    y = y0 + px(10)
     for (t, s, vis), d in zip(righe, dims):
-        y += d[1] + 22
+        y += d[1] + px(22)
         if vis <= 0:
             continue
-        scala, spess, g = STILI[s]
+        scala, spess, g = stile(s)
         if vis >= 1:
-            cv2.putText(fr, t, (x0 + 25, y), F, scala, (g, g, g), spess, cv2.LINE_AA)
+            cv2.putText(fr, t, (x0 + px(25), y), F, scala, (g, g, g), spess, cv2.LINE_AA)
         else:
-            a, b = y - d[1] - 6, y + 10           # solo la striscia della riga
+            a, b = y - d[1] - px(6), y + px(10)   # solo la striscia della riga
             ov = fr[a:b].copy()
-            cv2.putText(ov, t, (x0 + 25, d[1] + 6), F, scala, (g, g, g), spess, cv2.LINE_AA)
+            cv2.putText(ov, t, (x0 + px(25), d[1] + px(6)), F, scala, (g, g, g), spess, cv2.LINE_AA)
             fr[a:b] = cv2.addWeighted(ov, vis, fr[a:b], 1 - vis, 0)
 
 
@@ -282,6 +304,62 @@ def mappa(fr, colpo, n, fps):
     fr[y0:y0 + img.shape[0], x0:x0 + img.shape[1]] = img
 
 
+# ------------------------------------------------------------------ tracking della pallina
+def leggi_punti(percorso, solo_tracknet=True):
+    """{frame: (x, y)} dal tracking CSV (solo i punti visti da TrackNet) o dal CSV delle palline ferme."""
+    if not os.path.exists(percorso):
+        return {}
+    punti = {}
+    for r in csv.DictReader(open(percorso, newline="")):
+        if solo_tracknet and r.get("pallina_fonte") != "tracknet":
+            continue
+        try:
+            punti[int(r["frame"])] = (float(r["pallina_x"]), float(r["pallina_y"]))
+        except (ValueError, KeyError, TypeError):
+            continue
+    return punti
+
+
+def cerchio(img, centro, raggio, colore, spessore, alfa=1.0):
+    """Cerchio (spessore -1 = pieno) con trasparenza alfa, mescolato solo nel riquadro attorno."""
+    x, y = int(round(centro[0])), int(round(centro[1]))
+    if alfa >= 1:
+        cv2.circle(img, (x, y), raggio, colore, spessore, cv2.LINE_AA)
+        return
+    m = raggio + max(spessore, 0) + 2
+    x0, y0, x1, y1 = max(0, x - m), max(0, y - m), min(img.shape[1], x + m + 1), min(img.shape[0], y + m + 1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    roi = img[y0:y1, x0:x1]
+    ov = roi.copy()
+    cv2.circle(ov, (x - x0, y - y0), raggio, colore, spessore, cv2.LINE_AA)
+    roi[:] = cv2.addWeighted(ov, alfa, roi, 1 - alfa, 0)
+
+
+def disegna_tracking(fr, n, tracknet, ferme, attivi, fps, s):
+    """Scia dei punti di TrackNet (anelli gialli, grigi se palline ferme) e punti usati per il calcolo
+    (anelli rossi, al posto di quelli gialli). Coordinate del video originale; s = scala del video in
+    uscita (per tenere le misure uguali)."""
+    r, spess = max(4, int(8 / s)), max(2, int(2 / s))
+    usati = {}                                  # frame -> posizioni usate dal calcolo, fino a questo frame
+    for c in attivi:
+        for f, x, y in c.get("_punti", []):
+            if f <= n:
+                usati.setdefault(int(f), []).append((x, y))
+    scia = max(1, int(round(SCIA_S * fps)))
+    for f in range(n - scia + 1, n + 1):
+        p = tracknet.get(f)
+        if p is None:
+            continue
+        if any(abs(p[0] - x) <= 2 and abs(p[1] - y) <= 2 for x, y in usati.get(f, [])):
+            continue                            # punto usato: anello rosso qui sotto, non giallo
+        alfa = 1 - (1 - SCIA_MIN) * (n - f) / scia
+        cerchio(fr, p, r, GRIGIO_FERMA if f in ferme else GIALLO, spess, alfa)
+    for punti in usati.values():
+        for x, y in punti:
+            cerchio(fr, (x, y), r, ROSSO, spess)
+
+
 # ------------------------------------------------------------------ contatore
 def eventi_contatore(colpi):
     """Per ogni colpo contato (riepilogo.ha_dati): (tipo, frame del colpo, esito, frame del rimbalzo)."""
@@ -369,6 +447,8 @@ def main():
     fps = cap.get(cv2.CAP_PROP_FPS)
     W, H = int(cap.get(3)), int(cap.get(4))
     s = min(1.0, LARGHEZZA_MAX / W)
+    if H * s < ALTEZZA_MIN:                    # video piccolo: si ingrandisce (le scritte restano leggibili)
+        s = ALTEZZA_MIN / H
     size = (int(W * s) // 2 * 2, int(H * s) // 2 * 2)
     tmp = uscita + ".tmp.mp4"
     out = cv2.VideoWriter(tmp, cv2.VideoWriter_fourcc(*"mp4v"), fps, size)
@@ -376,6 +456,8 @@ def main():
     rie = riepilogo.calcola(colpi, nome)
     tipi = [r["colpo"] for r in rie["tipi"]]
     eventi = eventi_contatore(colpi)
+    tracknet = leggi_punti(os.path.join(a.dati, nome + "_tracking.csv")) if MOSTRA_TRACKING else {}
+    ferme = leggi_punti(os.path.join(a.dati, nome + "_palline_ferme.csv"), solo_tracknet=False) if MOSTRA_TRACKING else {}
     n, ultimo = 0, None
     while True:
         ok, fr = cap.read()
@@ -383,11 +465,14 @@ def main():
             break
         n += 1
         attivi = [c for c in colpi if c["frame"] < n <= fine[id(c)]]
-        for c in attivi:
-            for f, x, y in c.get("_punti", []):
-                if f <= n:
-                    cv2.circle(fr, (int(x), int(y)), max(4, int(8 / s)), (0, 230, 255), max(2, int(2 / s)), cv2.LINE_AA)
-        fr = cv2.resize(fr, size, interpolation=cv2.INTER_AREA)
+        if MOSTRA_TRACKING:
+            disegna_tracking(fr, n, tracknet, ferme, attivi, fps, s)
+        else:
+            for c in attivi:
+                for f, x, y in c.get("_punti", []):
+                    if f <= n:
+                        cv2.circle(fr, (int(x), int(y)), max(4, int(8 / s)), (0, 230, 255), max(2, int(2 / s)), cv2.LINE_AA)
+        fr = cv2.resize(fr, size, interpolation=cv2.INTER_AREA if s <= 1 else cv2.INTER_LINEAR)
         ultimo = fr.copy()                      # senza le scritte: sfondo della scheda finale
         # se due colpi sono vicini, l'etichetta del piu' recente sostituisce l'altra (non si sovrappongono)
         for c in sorted(attivi, key=lambda c: c["frame"])[-1:]:

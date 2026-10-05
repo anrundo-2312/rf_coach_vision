@@ -33,6 +33,8 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
 - `palla_locale.py` - rilevatore della pallina per colore, attorno al
   giocatore, dove TrackNet la perde. Ignora il giallo fermo dello sfondo
   (borse, cartelli) e ha una ricerca "estesa" usata solo per la direzione.
+  Riconosce anche i punti di TrackNet che sono palline ferme in campo
+  (3 ottobre), che `velocita_uscita.py` toglie.
 - `fotogrammi.py` - riconosce i video convertiti con fotogrammi ripetuti (es.
   50 -> 60 fps) e da' a ogni fotogramma il suo istante vero. Sui video del
   telefono non si attiva.
@@ -49,7 +51,9 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
 - `disegna_velocita.py` - riscrive il video con colpo, km/h (e sotto, in
   piccolo, la velocita' media del volo), direzione e una piccola mappa del
   campo, con il punto in cui la pallina rimbalza; in alto a destra il
-  contatore dei colpi e, alla fine, la scheda della sessione.
+  contatore dei colpi e, alla fine, la scheda della sessione. Mostra anche il
+  tracking della pallina (punti di TrackNet, punti usati, palline ferme), che
+  si spegne con `MOSTRA_TRACKING = False`.
 - `riepilogo.py` - le metriche della sessione (colpi per tipo, dentro e fuori,
   errori, profondita', direzioni, velocita') e la scheda per l'allievo. Lo
   chiama `disegna_velocita.py`: di solito non serve eseguirlo a parte.
@@ -204,11 +208,17 @@ salvata, senza finestre (anche su Colab).
    si muove. Il giallo presente anche nello sfondo del tratto (mediana di 15
    fotogrammi: borse, sedie, cartelli) non viene preso per la pallina: sul
    video alcaraz, al dritto del frame 567, prima seguiva una borsa gialla.
+   Prima si tolgono i punti di TrackNet che sono palline ferme in campo, e la
+   traccia parte dal primo punto di TrackNet confermato da un altro vicino
+   (vedi "Palline ferme in campo").
 3. **Contatto.** Cambio brusco della direzione della pallina (3 frame prima
    contro 3 dopo) con la pallina entro 0,6 altezze del giocatore da un polso,
    e pallina che DOPO si allontana veloce. L'ultima condizione scarta il
    rimbalzo della pallina dell'avversario davanti al giocatore, che
-   nell'immagine sembra un colpo.
+   nell'immagine sembra un colpo. Il tipo di colpo e' quello piu' votato
+   dalla posa nei 16 frame fino al contatto; un "servizio" con la pallina
+   chiaramente sotto la testa al contatto diventa dritto o rovescio (vedi
+   "Servizio solo con la pallina sopra la testa").
 4. **Velocita'.** `exit_speed` sui ~1/3 di secondo dopo il contatto (20 frame
    a 60 fps), con la posizione a terra del giocatore (caviglie della posa,
    nel frame in cui i piedi sono piu' in basso: nel servizio al contatto sono
@@ -271,12 +281,29 @@ salvata, senza finestre (anche su Colab).
    mostrarlo. Velocita' e direzione NON si scrivono quando la traiettoria 3D
    non spiega i punti della pallina (errore sopra 6 px, riportato a 1080p;
    sui colpi buoni e' 1-3 px), oppure il risultato non e' da tennis:
-   velocita' fuori da 30-250 km/h, oppure un colpo da fondo con angolo oltre
-   45 gradi. Nel CSV la riga resta, con `punti_usati`, `errore_px` e la nota
-   "misura scartata: ..." con i motivi; sul video compare "km/h non
-   disponibile - misura non affidabile". Succede quando i punti seguiti non
-   sono la pallina colpita: sul video alcaraz la racchetta gialla presa dal
-   rilevatore di colore, altre palline, l'altro giocatore.
+   velocita' fuori da 30-250 km/h, oppure un angolo oltre il limite. Nel CSV
+   la riga resta, con `punti_usati`, `errore_px` e la nota "misura scartata:
+   ..." con i motivi; sul video compare "km/h non disponibile - misura non
+   affidabile". Succede quando i punti seguiti non sono la pallina colpita:
+   sul video alcaraz la racchetta gialla presa dal rilevatore di colore,
+   altre palline, l'altro giocatore.
+   **Il limite dell'angolo** (dal 4 ottobre; prima era 45 gradi fissi per
+   tutti i colpi da fondo) dipende dal punto di contatto: e' l'angolo dal
+   contatto alla riga laterale del singolo, dalla parte dove va la pallina,
+   0,5 m dopo la rete, piu' 10 gradi di margine, e mai meno di 45
+   (`limite_angolo`; costanti `ANGOLO_MAX`, `ANGOLO_MARGINE`,
+   `ANGOLO_DOPO_RETE`). Dal fondo quell'angolo e' al massimo circa 34 gradi,
+   quindi il limite resta 45 come prima; da dentro il campo cresce: dalla
+   riga del servizio, a 0,6 m dalla riga laterale, verso l'altra riga
+   laterale e' circa 58 gradi. Cosi' uno strettino colpito da dentro il campo (circa
+   50 gradi) non viene piu' scartato a torto. Il servizio non si controlla,
+   come prima. Vale sia per la ricerca normale sia per la ricerca estesa (punto
+   8). Con `verbose` il programma stampa per ogni controllo il contatto,
+   l'angolo e il limite ("controllo normale/estesa: ..."). Prova sui 4 video
+   di prova, test_tennis_1 e Giorgio: risultati identici; i colpi che prima
+   superavano i 45 gradi (alcaraz 246 a -63, alcaraz 867 a +85, test_tennis_1
+   431 a +65) erano scartati anche per l'errore della traiettoria (21-37 px) e
+   restano scartati.
 
 8. **Solo direzione.** Se in un colpo non esce nessuna velocita', la
    pallina si cerca di nuovo in modo esteso: si accetta anche la pallina
@@ -485,6 +512,43 @@ solo in "colpi".
 Alla fine del video, per 6 s (`FINALE_S`), la scheda della sessione sopra
 l'ultimo fotogramma sfocato: la stessa di `<video>_scheda.png`.
 
+### Il tracking della pallina sul video (4 ottobre)
+
+Per capire dove TrackNet vede la pallina e dove no, e quali punti sono
+entrati nel calcolo, il video mostra anche il tracking (`MOSTRA_TRACKING =
+True` in cima a `disegna_velocita.py`, acceso di default):
+
+- **anelli gialli**: i punti visti da TrackNet (dal `<video>_tracking.csv`,
+  solo la fonte "tracknet": le posizioni stimate da InpaintNet no) che il
+  calcolo non ha usato, a scia: l'ultimo secondo (`SCIA_S`), i piu' vecchi
+  sbiaditi;
+- **anelli rossi**: i punti usati per il calcolo del colpo (TrackNet o
+  rilevatore di colore), al posto dell'anello giallo, visibili per tutta la
+  durata dell'etichetta;
+- **anelli grigi**: punti di TrackNet scartati come palline ferme in campo
+  (vedi "Palline ferme in campo"). `velocita_uscita.py` li scrive in
+  `<video>_palline_ferme.csv`; si controllano solo nelle finestre dei colpi,
+  quindi fuori dai colpi una pallina ferma resta gialla.
+
+Come leggerlo: anelli gialli attorno al contatto senza anelli rossi vogliono
+dire che TrackNet c'era ma il calcolo non li ha usati; nessun anello vuol
+dire che TrackNet ha perso la pallina e il calcolo non ha usato punti del
+colore. Un anello rosso puo' essere un punto di TrackNet o del rilevatore di
+colore: sul video non si distinguono (dal 5 ottobre; prima il punto usato era
+un pallino rosso dentro l'anello giallo, senza anello se veniva dal colore).
+Il rosso del rimbalzo "fuori" (bordo e onda nella mappa) e del contatore
+resta com'e'.
+
+Con `MOSTRA_TRACKING = False` (per esempio il video per l'allievo) il video
+e' come prima: anelli gialli solo sui punti usati per il calcolo. E' solo
+disegno: CSV e calcoli non cambiano.
+
+Scritte, mappa, contatore e scheda sono disegnati per 1080 righe e si
+scalano con l'altezza del video. I video piu' piccoli di 720p (per esempio
+640x360) vengono ingranditi a 720p (`ALTEZZA_MIN`): prima l'etichetta restava
+grande come a 1080p e copriva meta' del fotogramma (test_tennis_1, 2
+ottobre). I video piu' larghi di 1920 si rimpiccioliscono come prima.
+
 ## Metriche della sessione e scheda per l'allievo (2 ottobre)
 
 `riepilogo.py` conta, per ogni video, servizi, dritti e rovesci. Regole
@@ -636,6 +700,103 @@ attorno al contatto (6 prove, 13-29 frame), non ha mai dato una direzione
 sbagliata, ma non l'ha nemmeno mai data. Quindi: quando c'e' e' affidabile,
 ma spesso manca.
 
+## Palline ferme in campo (3 ottobre)
+
+TrackNet da' un solo punto per fotogramma. Quando la pallina in gioco non si
+vede bene (prima del colpo, vicino al corpo, lasciata cadere dal giocatore)
+a volte indica un'altra pallina ferma in campo. Sul video Giorgio (camera
+bassa, 1,71 m, palline a terra oltre la rete, che si vedono proprio nella
+fascia della rete) un quinto dei punti di TrackNet erano palline a terra.
+Prima di ogni colpo la "pallina" restava li': il programma non la vedeva
+arrivare alla racchetta, non trovava il contatto e quindi niente km/h e
+niente pallini gialli. E siccome TrackNet "una pallina la vedeva", il
+rilevatore di colore (che entra dove TrackNet la perde) non partiva.
+
+Cosa fa ora `velocita_uscita.py`, in ogni finestra di un colpo:
+
+1. Toglie i punti di TrackNet che sono palline ferme
+   (`palla_locale.tracknet_fermi`). Un punto e' una pallina ferma se nella
+   stessa zona c'e' una pallina gialla piccola (3-120 px quadrati a 1080p,
+   come nel campo lontano) anche 0,4-0,6 s PRIMA e anche altrettanto DOPO, e
+   il punto sta a meta' tra le due: una pallina ferma, o che rotola piano e
+   dritto (fino a 0,1 altezze del giocatore al secondo). La pallina in gioco
+   in quegli istanti e' altrove; se passa vicino a una pallina ferma, il suo
+   punto non sta a meta' tra le due posizioni di quella ferma e resta. La
+   pallina in mano al giocatore e' piu' grande e non conta.
+   Si guardano solo i punti che, portati a terra con la calibrazione, cadono
+   in campo o attorno (`FERME_X`, `FERME_Y`): sopra la recinzione alberi e
+   cespugli secchi sono pieni di giallo, e la pallina in volo li' davanti
+   veniva presa per ferma.
+2. La traccia della pallina parte dal primo punto di TrackNet confermato da
+   un altro punto vicino (entro 2 frame e 0,3 altezze del giocatore), non da
+   un punto isolato, che spesso e' un falso rilevamento.
+
+I punti tolti si scrivono in `<video>_palline_ferme.csv` (frame, tempo,
+posizione) e nel video compaiono come anelli grigi (dal 4 ottobre, vedi "Il
+tracking della pallina sul video").
+
+Prova A/B (catena completa: velocita_uscita, direzione_nascosta,
+velocita_rimbalzo): sui 4 video di prova e su test_tennis_1 i risultati sono
+identici. Su Giorgio (12 colpi veri, contati a occhio e con l'audio):
+
+| | prima | dopo |
+|---|---|---|
+| colpi con i km/h | 3 | 5 |
+| solo direzione | 3 | 2 |
+| colpi veri senza riga | 3 | 1 |
+
+- dritto a 37,0 s: prima mancava, ora circa 130 km/h dal rimbalzo, dal centro
+  verso sinistra, dentro;
+- rovescio a 18,2 s: prima solo direzione, ora 62 km/h misurati, dal centro
+  verso destra (come il rimbalzo trovato); la media fino al rimbalzo (62)
+  non e' piu' bassa dell'uscita, quindi probabilmente i 62 sono bassi (palla
+  alta, 1,45 s di volo);
+- dritto a 14,0 s: ora c'e' la riga, ma senza velocita';
+- in piu' una riga falsa senza dati a 16,5 s (posa, nessun colpo);
+- resta perso il rovescio a 24,7 s.
+
+Restano i limiti di quel video: 30 fps (pochi punti subito dopo il colpo) e
+l'esercizio con la pallina lasciata cadere dal giocatore, vedi i Limiti.
+Tempo: circa 1,5 s in piu' per finestra su un video 1080p.
+
+## Servizio solo con la pallina sopra la testa (5 ottobre)
+
+Il classificatore guarda solo la posa: quando il giocatore alza il braccio per
+lanciarsi la pallina, anche in un esercizio e non per servire, puo' dire
+"servizio". Sul video Giorgio, a 45,7 s, Giorgio si lancia la pallina in
+alto, la pallina tocca (terra o racchetta) all'altezza della vita, risale e
+lui la gioca corta: il cambio di direzione del tocco veniva preso per il
+contatto di un servizio.
+
+Il servizio si colpisce sempre sopra la testa. Quindi ora
+(`colpo_al_contatto` in `velocita_uscita.py`): se la posa dice "servizio" ma
+nel frame del contatto e nei 2 prima la pallina e' sotto il bordo alto del
+riquadro del giocatore di almeno 0,05 altezze (`SERVIZIO_MARGINE`), il colpo
+non e' un servizio e prende la classe piu' votata tra le altre (dritto o
+rovescio). Non serve vedere il lancio, basta l'istante del colpo: nel video
+di Nicola il lancio comincia prima dell'inizio del video. Una regola
+"pallina lanciata in alto e colpita mentre scende" invece non funzionerebbe:
+vista da dietro, anche la pallina che arriva dal campo lontano sta sopra la
+testa del giocatore e scende verso di lui, come un lancio.
+
+Pallina al contatto rispetto al bordo alto del riquadro (in altezze del
+giocatore, + = sopra la testa):
+
+| Colpo | E' un servizio? | Pallina |
+|---|---|---|
+| Nicola 15 | si' | +0,24 |
+| swing_vision 302 | si' | +0,32 |
+| alcaraz 141 | si' | +0,16 |
+| Giorgio 1373 (45,7 s) | no | -0,43 |
+
+Prova A/B (catena completa) su Nicola, Djokovic, swing_vision, alcaraz,
+test_tennis_1 e Giorgio: cambia solo Giorgio 1373, da "servizio" a "dritto";
+resta "misura scartata", perche' quel tocco non e' un colpo. I servizi veri
+restano uguali. Quando il contatto non si vede (righe "contatto non
+visibile", per esempio i falsi servizi alcaraz 1302 e Giorgio 32,3 s) il
+controllo non si puo' fare e la riga resta com'era. `SERVIZIO_SOPRA_TESTA =
+False` in cima a `velocita_uscita.py` lo spegne.
+
 ## Precisione da aspettarsi
 
 Dalle simulazioni (camera dietro al giocatore e rialzata, 60 fps, 20 frame
@@ -714,7 +875,23 @@ su altri.
   (profondita' dei piedi, altezza fissa), tempo di volo +-1 frame, rotazione
   non nel modello.
 - Il classificatore della posa a volte vede un servizio dove il giocatore
-  cammina (alcaraz, frame 1302).
+  cammina (alcaraz, frame 1302). Dal 5 ottobre un "servizio" con la pallina
+  sotto la testa al contatto diventa dritto o rovescio; se il contatto non si
+  vede (come al 1302) la riga resta "servizio", senza dati.
+- Palla corta: dopo il colpo la pallina va piano e si allontana, quindi il
+  contatto non si riconosce (serve che dopo vada ad almeno 2,4 altezze del
+  giocatore al secondo) e, anche abbassando la soglia, il calcolo 3D da' 10-20
+  km/h e angoli impossibili: provato il 5 ottobre su tutti i video di prova,
+  nessun colpo recuperato (Giorgio, palla corta a 46,5 s).
+- Pallina lasciata cadere dal giocatore e colpita (autoalimentazione), vista
+  da dietro: la pallina sale nell'immagine sia prima del colpo (dopo il
+  rimbalzo) sia dopo, quindi il cambio di direzione al contatto e' piccolo e
+  spesso il contatto non si trova (Giorgio, dritto a 14,0 s: anche con la
+  traccia giusta il cambio e' 1,7 altezze al secondo, la soglia 2,5). TrackNet
+  poi non vede la pallina che cade vicino al corpo. Provato a riconoscere il
+  contatto anche dall'accelerazione e a ripartire dalla pallina vista col
+  colore vicino al polso: trova alcuni colpi ma anche contatti falsi, quindi
+  non adottato.
 - Dentro/fuori in profondita' vicino al fondo lontano: con la camera a circa
   2,2 m un pixel vale circa 0,3 m, quindi le chiamate "lunga" entro circa 1 m
   dalla riga non sono sicure; di lato invece la precisione e' di pochi
