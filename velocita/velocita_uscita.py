@@ -14,7 +14,9 @@ un colpo per riga, e outputs/dati/<video>_campo.jpg: il campo della
 calibrazione usata disegnato sul primo fotogramma, per controllare a colpo
 d'occhio che la camera fosse messa bene. Scrive anche
 outputs/dati/<video>_palline_ferme.csv, i punti di TrackNet scartati come
-palline ferme (solo per disegnarli in grigio sul video).
+palline ferme, nelle finestre dei colpi e fino a 1,6 s dopo ogni colpo:
+direzione_nascosta.py e velocita_rimbalzo.py tolgono gli stessi punti, il
+video li disegna in grigio.
 
 Passi:
 
@@ -176,6 +178,9 @@ VELOCITA_PLAUSIBILE = (30, 250)  # km/h
 # cadono in campo o attorno (fino a ~8-10 m oltre le righe); sopra la recinzione no
 FERME_X = (-7.0, 18.0)
 FERME_Y = (-8.0, 34.0)
+# ... e anche fino a 1,6 s dopo ogni colpo, dove direzione_nascosta.py cerca la pallina che ricompare e
+# velocita_rimbalzo.py il rimbalzo (DURATA_MAX_S): i due file leggono i punti tolti da <video>_palline_ferme.csv
+FERME_DOPO_S = 1.6
 # Angolo massimo (gradi rispetto alle righe laterali, servizio escluso): dal punto di contatto, l'angolo
 # verso la riga laterale del singolo dalla parte dove va la pallina, 0,5 m dopo la rete, piu' 10 gradi
 # di margine; mai sotto 45 (dal fondo resta 45: da li' quell'angolo e' al massimo ~34 gradi)
@@ -684,10 +689,12 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     altezze = {int(f): float(b[3] - b[1]) for f, b in zip(t["frame"], t["box"]) if np.isfinite(b[3] - b[1])}
 
     a_terra = a_terra_in_campo(cam)
-    ferme = {}                  # punti di TrackNet scartati come palline ferme, per il video (disegna_velocita.py)
+    ferme = {}                  # punti di TrackNet scartati come palline ferme (<video>_palline_ferme.csv)
+    controllati = set()         # frame in cui il filtro e' gia' stato fatto
     colpi = []
     for a, b in finestre_colpi(classi, n):
         primo, ultimo = max(1, a - MARGINE_FINESTRA), min(n, b + MARGINE_FINESTRA)
+        controllati.update(range(primo, ultimo + 1))
         inizio_righe = len(colpi)
         # i punti di TrackNet su palline ferme in campo non sono la pallina in gioco
         fermi = palla_locale.tracknet_fermi(video, primo, ultimo, tracknet, altezze, t["fps"], a_terra)
@@ -751,6 +758,24 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         if not any(r.get("velocita_uscita_kmh", "") != "" for r in colpi[inizio_righe:]):
             solo_direzione(video, t, classi, a, b, primo, ultimo, tn, altezze, cam, fonte,
                            altezza_img, colpi, inizio_righe, verbose)
+    # il filtro anche fino a FERME_DOPO_S dopo ogni colpo: qui non cambia niente (le righe sono gia' fatte),
+    # serve a direzione_nascosta.py e velocita_rimbalzo.py, che leggono i punti tolti dal file
+    dopo = sorted({f for r in colpi for f in range(int(r["frame"]), min(n, int(r["frame"]) + int(FERME_DOPO_S * t["fps"])) + 1)}
+                  - controllati)
+    tratti = []
+    for f in dopo:
+        if tratti and f == tratti[-1][1] + 1:
+            tratti[-1][1] = f
+        else:
+            tratti.append([f, f])
+    in_piu = 0
+    for primo, ultimo in tratti:
+        fermi = palla_locale.tracknet_fermi(video, primo, ultimo, tracknet, altezze, t["fps"], a_terra)
+        ferme.update({f: tracknet[f] for f in fermi})
+        in_piu += len(fermi)
+    if verbose and dopo:
+        print(f"dopo i colpi (fino a {FERME_DOPO_S:.1f} s): {len(dopo)} frame controllati in piu', "
+              f"{in_piu} punti di TrackNet su palline ferme tolti")
     colpi.sort(key=lambda r: r["frame"])
     salva_palline_ferme(os.path.join(cartella_dati, nome + "_palline_ferme.csv"), ferme, t)
     return nome, colpi
@@ -758,12 +783,27 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
 
 def salva_palline_ferme(percorso, ferme, t):
     """<video>_palline_ferme.csv: i punti di TrackNet scartati come palline ferme (palla_locale.tracknet_fermi),
-    uno per riga. Non entra in nessun calcolo: serve solo a disegnarli in grigio sul video."""
+    uno per riga: finestre dei colpi e fino a FERME_DOPO_S dopo ogni colpo. Lo leggono direzione_nascosta.py e
+    velocita_rimbalzo.py (leggi_palline_ferme) per togliere gli stessi punti, e disegna_velocita.py (in grigio)."""
     with open(percorso, "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["frame", "tempo_s", "pallina_x", "pallina_y"])
         for f in sorted(ferme):
             w.writerow([f, round(float(t["tempo"][f - 1]), 3), round(float(ferme[f][0]), 1), round(float(ferme[f][1]), 1)])
+
+
+def leggi_palline_ferme(percorso):
+    """
+    Frame dei punti di TrackNet scartati come palline ferme (<video>_palline_ferme.csv). Se il file manca
+    (risultati di velocita_uscita.py di prima del 4 ottobre) avvisa e restituisce un insieme vuoto: si usano
+    tutti i punti di TrackNet, come prima.
+    """
+    if not os.path.exists(percorso):
+        print(f"[palline ferme] manca {os.path.basename(percorso)} (risultati vecchi di velocita_uscita.py?): "
+              "uso tutti i punti di TrackNet. Per il filtro rilancia velocita_uscita.py.")
+        return set()
+    with open(percorso, newline="") as fh:
+        return {int(r["frame"]) for r in csv.DictReader(fh)}
 
 
 def seme_lancio(t, tracknet, primo, ultimo):

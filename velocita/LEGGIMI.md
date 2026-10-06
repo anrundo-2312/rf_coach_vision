@@ -42,7 +42,8 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
   velocita' e direzione.
 - `direzione_nascosta.py` - solo per i colpi in cui la pallina e' coperta dal
   giocatore al contatto: prova a ricavare la direzione dal volo che si vede
-  dopo. Non tocca la velocita'.
+  dopo (dal 6 ottobre anche dalla pallina che esce dal giocatore, quando
+  quella in arrivo non si vede). Non tocca la velocita'.
 - `velocita_rimbalzo.py` - per i colpi rimasti senza km/h: velocita' STIMATA
   dal rimbalzo nel campo avversario, quando si vede. Va in una colonna a
   parte e sul video compare come "circa ... km/h (dal rimbalzo)". Per tutti
@@ -495,6 +496,24 @@ alcaraz 577 e 709 (medie, a 3,9 e 3,2 m dalla riga di fondo), nessuna corta
 ne' palla corta. Con le quattro fasce non cambia niente, ma alcaraz 275 e
 Djokovic 65 sono profonde per poco (1,43 e 1,45 m dalla riga di fondo).
 
+**Il raggio della pallina (6 ottobre).** Quando rimbalza, il centro della
+pallina e' a 3,3 cm da terra, non a terra. Prima il programma portava a terra
+il centro e il rimbalzo usciva sempre un po' piu' lungo, di circa distanza
+dalla camera x 3,3 cm / altezza della camera: 0,6 m su Giorgio (camera a
+1,72 m), 0,4-0,5 m su alcaraz (2,2 m), 0,3-0,4 m con la camera a circa 3 m.
+Ora (`rimbalzo_a_terra` in `velocita_rimbalzo.py`) il raggio della camera si
+interseca con il piano a 3,3 cm d'altezza e il rimbalzo e' il punto a terra
+proprio sotto. Prova A/B sui 7 video (i 6 di prova e
+video_alcaraz_palline_sparse): tutti i rimbalzi 0,3-0,6 m piu' corti; nessun
+dentro/fuori cambia (Giorgio 18,2 s da 0,71 a 0,10 m fuori, 60,2 s da 2,07 a
+1,43 m; alcaraz 418 da 0,70 a 0,20 m); "profonda" diventa "media" su Giorgio
+30,1 s, Djokovic 65, alcaraz 275 e 1152 e video_alcaraz_palline_sparse 13,3 s;
+le velocita' stimate dal rimbalzo scendono di 2-4 km/h e le medie del volo di
+1-3 km/h; le velocita' misurate non cambiano. Una direzione cambia: il dritto di
+Giorgio a 60,2 s passa da "centrale" a "incrociato" (angolo da -15,0 a -15,2
+gradi, proprio sul confine; i punti in volo dicevano gia' incrociato).
+`RIMBALZO_SUL_RAGGIO = False` in cima a `velocita_rimbalzo.py` torna a prima.
+
 ### Velocita' media del volo (2 ottobre)
 
 7. Per i colpi con una velocita' e il rimbalzo trovato, `velocita_rimbalzo.py`
@@ -560,8 +579,9 @@ True` in cima a `disegna_velocita.py`, acceso di default):
   durata dell'etichetta;
 - **anelli grigi**: punti di TrackNet scartati come palline ferme in campo
   (vedi "Palline ferme in campo"). `velocita_uscita.py` li scrive in
-  `<video>_palline_ferme.csv`; si controllano solo nelle finestre dei colpi,
-  quindi fuori dai colpi una pallina ferma resta gialla.
+  `<video>_palline_ferme.csv`; si controllano nelle finestre dei colpi e, dal
+  6 ottobre, fino a 1,6 s dopo ogni colpo, quindi fuori da questi tratti una
+  pallina ferma resta gialla.
 
 Come leggerlo: anelli gialli attorno al contatto senza anelli rossi vogliono
 dire che TrackNet c'era ma il calcolo non li ha usati; nessun anello vuol
@@ -733,6 +753,57 @@ attorno al contatto (6 prove, 13-29 frame), non ha mai dato una direzione
 sbagliata, ma non l'ha nemmeno mai data. Quindi: quando c'e' e' affidabile,
 ma spesso manca.
 
+### La pallina in uscita (6 ottobre)
+
+Quando i passi sopra non danno la direzione (la pallina in arrivo non si
+vede, ricompare troppo lontano dal colpo o il calcolo non e' stabile),
+`direzione_nascosta.py` prova con la pallina che esce dal giocatore:
+
+1. i punti di TrackNet attorno al colpo si dividono in tracce coerenti, una
+   pallina per traccia (un punto per fotogramma, salti piccoli, al massimo
+   0,5 s senza punti): i punti di un'altra pallina non si mescolano a quelli
+   della pallina colpita;
+2. si prende la prima traccia che comincia durante il colpo, con il primo
+   punto entro 0,8 altezze del giocatore da un polso, almeno 6 punti e che si
+   allontana dal giocatore (stesso controllo del punto 5);
+3. il contatto si prova da 0,5 a 2,5 fotogrammi prima del primo punto, nel
+   pixel dove portano i primi punti (non al polso: la racchetta e' piu' in
+   la', e con il polso i calcoli sbagliavano di 14-41 px);
+4. stesse condizioni del punto 3: il calcolo migliore entro 4 px e tutti
+   quelli buoni d'accordo entro 6 gradi, altrimenti niente.
+
+Se la direzione esce, la riga va al fotogramma prima del primo punto della
+pallina in uscita (se non c'e' gia' un'altra riga entro 15 frame), cosi'
+anche `velocita_rimbalzo.py` cerca il rimbalzo dal momento giusto. I km/h
+misurati restano "non disponibile". Nel CSV la nota e' "contatto non
+visibile (pallina in uscita dal frame X, riga spostata dal Y)".
+`USCITA = False` in cima a `direzione_nascosta.py` torna a prima.
+
+Prova A/B (catena completa, 7 video: i 6 di prova e
+video_alcaraz_palline_sparse): cambiano 2 righe.
+
+- Giorgio, dritto a 14,0 s: la riga va da 13,4 a 14,03 s (frame 422; il
+  contatto controllato a occhio e' circa al 424) e prende la direzione
+  "lungo linea" (dai frame 423-432, errore 1,2 px). Ora c'e' anche il
+  rimbalzo, visto da TrackNet: fuori di lato di 0,94 m. Controllato a occhio
+  con le righe del campo disegnate sul fotogramma: la pallina rimbalza nel
+  corridoio del doppio.
+- video_alcaraz_palline_sparse, dritto a 0,5 s: cambia solo l'istante, da
+  0,52 a 0,77 s. Velocita' dal rimbalzo (134 km/h), direzione e rimbalzo
+  identici: la stima dal rimbalzo usava gia' il contatto al frame 47.
+
+Tutto il resto identico. Le righe false di Giorgio (16,5, 32,3 e 35,0 s)
+restano senza direzione; su swing_vision 1377 e Giorgio 263 e 1052 (la riga
+falsa delle 35,0 s) la pallina in uscita si trova, ma i calcoli non sono
+d'accordo e non si scrive niente. Tempo trascurabile.
+
+Rischio da tenere d'occhio: se la posa vede un colpo che non c'e' e proprio
+li' parte una pallina vicino al polso che si allontana (pallina lanciata o
+palleggiata con la racchetta, cesto del maestro), quella riga falsa
+prenderebbe una direzione e nelle metriche conterebbe come colpo. Sui 7
+video non e' successo, ma nessuno e' una lezione con il cesto: nei primi
+video nuovi conviene guardare le righe con questa nota.
+
 ## Palline ferme in campo (3 ottobre)
 
 TrackNet da' un solo punto per fotogramma. Quando la pallina in gioco non si
@@ -791,6 +862,25 @@ identici. Su Giorgio (12 colpi veri, contati a occhio e con l'audio):
 Restano i limiti di quel video: 30 fps (pochi punti subito dopo il colpo) e
 l'esercizio con la pallina lasciata cadere dal giocatore, vedi i Limiti.
 Tempo: circa 1,5 s in piu' per finestra su un video 1080p.
+
+**Anche per la direzione e il rimbalzo (6 ottobre).** Fino al 5 ottobre il
+filtro valeva solo in `velocita_uscita.py`: `direzione_nascosta.py` e
+`velocita_rimbalzo.py` usavano tutti i punti di TrackNet, palline ferme
+comprese. Ora `velocita_uscita.py` cerca le palline ferme anche fino a 1,6 s
+dopo ogni colpo (`FERME_DOPO_S`: il tempo in cui si cerca il rimbalzo) e le
+scrive tutte in `<video>_palline_ferme.csv`; `direzione_nascosta.py` e
+`velocita_rimbalzo.py` tolgono gli stessi punti prima di tutto
+(`leggi_palline_ferme`; se il file manca usano tutti i punti, come prima).
+Provato gia' il 5 ottobre e lasciato fuori perche' su un rovescio di Giorgio
+la stima dal rimbalzo dava 231 km/h: con la velocita' dal rimbalzo per i colpi
+"solo direzione" quel caso non c'e' piu'. Prova A/B sui 7 video (i 6 di prova
+e video_alcaraz_palline_sparse): cambia solo Giorgio. Il dritto a 11,5 s
+prende la direzione (dal centro verso sinistra, dai punti della pallina che
+ricompare dopo il colpo: prima TrackNet in quei frame era su una pallina
+ferma); il rimbalzo del rovescio a 18,2 s resta nello stesso punto, trovato
+con il colore invece che con TrackNet. Tutto il resto identico. Tempo:
+qualche decina di secondi in piu' per video (si leggono anche i fotogrammi
+dopo i colpi).
 
 ## Servizio solo con la pallina sopra la testa (5 ottobre)
 
@@ -960,7 +1050,8 @@ su altri.
   poi non vede la pallina che cade vicino al corpo. Provato a riconoscere il
   contatto anche dall'accelerazione e a ripartire dalla pallina vista col
   colore vicino al polso: trova alcuni colpi ma anche contatti falsi, quindi
-  non adottato.
+  non adottato. Dal 6 ottobre il dritto a 14,0 s ha almeno la direzione,
+  dalla pallina in uscita (vedi "La pallina in uscita"); i km/h no.
 - Dentro/fuori in profondita' vicino al fondo lontano: con la camera a circa
   2,2 m un pixel vale circa 0,3 m, quindi le chiamate "lunga" entro circa 1 m
   dalla riga non sono sicure; di lato invece la precisione e' di pochi

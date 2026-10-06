@@ -22,6 +22,11 @@ arriva (il rimbalzo) e quanto ci mette
 resistenza dell'aria (lo stesso modello di rf_ball_exit_speed.py) che la
 spiega: la sua velocita' iniziale e' la velocita' d'uscita stimata.
 
+Prima di tutto si tolgono i punti di TrackNet su palline ferme in campo, gli
+stessi di velocita_uscita.py (<video>_palline_ferme.csv: finestre dei colpi e
+fino a 1,6 s dopo ogni colpo); se il file manca (risultati vecchi) si usano
+tutti i punti, come prima.
+
 Passi, per ogni colpo senza velocita':
 1. RIMBALZO: nei punti di TrackNet dopo il colpo, il primo punto piu' basso
    nell'immagine dei 3 prima e dei 2 dopo (la pallina scende verso terra e poi
@@ -99,7 +104,9 @@ diagonale; si decide sempre, la riga conta dentro), distanza_riga_m (+ dentro,
 1,5 m, media fino alla riga del servizio, corta fino a 3 m dalla rete, palla
 corta entro 3 m dalla rete): vedi velocita_uscita.dentro_fuori. Precisione: di lato
 buona; in profondita' vicino al fondo lontano scarsa con la camera bassa
-(alcaraz: circa 0,25 m per pixel), vedi LEGGIMI.
+(alcaraz: circa 0,25 m per pixel), vedi LEGGIMI. Il punto a terra tiene conto
+del raggio della pallina: al rimbalzo il centro e' a 3,3 cm da terra
+(rimbalzo_a_terra; prima il rimbalzo usciva 0,3-0,6 m piu' lungo).
 
 Prove del rimbalzo ricostruito: nascondendo apposta il rimbalzo nei 5 colpi di
 alcaraz in cui si vede, in 4 la stima resta entro il 7%; nel quinto le curve
@@ -144,6 +151,8 @@ MOTO_MINIMO_REL = 0.03      # i due controlli valgono solo se la pallina si muov
 CAMPO_Y = (12.5, 26.0)      # il rimbalzo deve cadere nel campo avversario (m dal fondo del giocatore)
 CAMPO_X = (-1.5, 12.5)
 VOLO_S = (0.25, 1.6)
+RAGGIO_PALLINA = 0.033      # m: al rimbalzo il centro della pallina e' a quest'altezza (rimbalzo_a_terra)
+RIMBALZO_SUL_RAGGIO = True  # False = come prima: il centro della pallina portato a z = 0 (rimbalzo piu' lungo)
 ALTEZZA_CONTATTO = {"servizio": 2.6}   # m; tutti gli altri colpi 1,0 m
 NOTA_RIMBALZO = "velocita' stimata dal rimbalzo"
 NOTA_RICOSTRUITO = "velocita' stimata dal rimbalzo ricostruito"   # comincia come NOTA_RIMBALZO
@@ -182,6 +191,21 @@ def partenza_stima(t, cam, riga, piedi, punti, t_contatto):
     return vu.punto_di_partenza(t, cam, piedi, punti=punti, t_contatto=t_contatto)
 
 
+def rimbalzo_a_terra(pixel, cam):
+    """
+    Pixel del centro della pallina al rimbalzo -> punto a terra (x, y) in m. Al rimbalzo il centro della pallina
+    e' a RAGGIO_PALLINA da terra, non a terra: si interseca il raggio della camera con il piano z = RAGGIO_PALLINA
+    (il punto a terra e' proprio sotto). Portando il centro a z = 0 il rimbalzo usciva sempre piu' lungo, di
+    circa distanza dalla camera x raggio / altezza della camera (Giorgio, camera a 1,72 m: 0,6 m vicino al fondo).
+    """
+    if not RIMBALZO_SUL_RAGGIO:
+        return calcolo.ground_from_pixel(pixel, cam)[:2]
+    R, _ = cv2.Rodrigues(np.asarray(cam["rvec"], float))
+    C = -R.T @ np.asarray(cam["tvec"], float).ravel()
+    verso = R.T @ np.linalg.inv(cam["K"]) @ np.array([pixel[0], pixel[1], 1.0])
+    return (C + (RAGGIO_PALLINA - C[2]) / verso[2] * verso)[:2]
+
+
 def trova_rimbalzo(tn, da, a, cam):
     """Primo rimbalzo nel campo avversario tra i frame da..a: (frame, pixel, punto a terra) o None."""
     fs = [f for f in range(da, a + 1) if f in tn]
@@ -194,7 +218,7 @@ def trova_rimbalzo(tn, da, a, cam):
         if not (all(y >= p for p in prima) and all(y > q for q in dopo)
                 and y - min(prima) > 2 and y - min(dopo) > 3):
             continue
-        terra = calcolo.ground_from_pixel(tn[fs[i]], cam)[:2]
+        terra = rimbalzo_a_terra(tn[fs[i]], cam)
         if CAMPO_Y[0] <= terra[1] <= CAMPO_Y[1] and CAMPO_X[0] <= terra[0] <= CAMPO_X[1]:
             return fs[i], tn[fs[i]], terra
     return None
@@ -450,7 +474,7 @@ def cerca_rimbalzo_coperto(t, tn, ripetuti, fc, cam, altezza_img):
                             bounds=(vu.istante(t, a), vu.istante(t, b)), method="bounded")
         scarto = float(np.sqrt(r.fun))
         pixel = 0.5 * (punto(cp, r.x) + punto(cd, r.x))
-        terra = calcolo.ground_from_pixel(pixel, cam)[:2]
+        terra = rimbalzo_a_terra(pixel, cam)
         ok = (scarto <= RIC_SCARTO_MAX * altezza_img and CAMPO_Y[0] <= terra[1] <= CAMPO_Y[1]
               and CAMPO_X[0] <= terra[0] <= CAMPO_X[1])
         return {"t": float(r.x), "terra": terra, "scarto": scarto, "ok": ok, "buco": (a, b),
@@ -600,6 +624,9 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     cal, _ = carica_per_video(video, calibrazione)
     cam = camera_da_json(cal)
     tn = {int(f): tuple(p) for f, p, v in zip(t["frame"], t["palla"], t["vista"]) if v}
+    # i punti di TrackNet su palline ferme (velocita_uscita.py) si tolgono anche qui
+    ferme = vu.leggi_palline_ferme(os.path.join(cartella_dati, nome + "_palline_ferme.csv"))
+    tn = {f: p for f, p in tn.items() if f not in ferme}
     altezze = {int(f): float(b[3] - b[1]) for f, b in zip(t["frame"], t["box"]) if np.isfinite(b[3] - b[1])}
     # i rimbalzi gia' usati (passo rieseguito) non valgono per altri colpi
     usati = set()
