@@ -83,28 +83,32 @@ Le immagini non vanno su GitHub (`.gitignore`: `*.jpg`, `*.png`, `*.pt`).
 ### 4. Colab: `finetune_tracknet_colab.ipynb`
 
 Su Colab: File → Apri notebook → GitHub → `anrundo-2312/rf_coach_vision` →
-`tracknet_finetune/finetune_tracknet_colab.ipynb`. Runtime con GPU (A100 o T4).
+`tracknet_finetune/finetune_tracknet_colab.ipynb` (oppure File → Carica
+notebook, dal PC). Runtime con GPU (A100 o T4), poi **Runtime → Esegui tutto**:
+servono solo due autorizzazioni di Google (Drive nella cella 2 e, la prima
+volta, la copia del dataset nella cella 5).
 
 | Cella | Cosa fa |
 |---|---|
 | 1-4 | GPU, Drive, codice (il nostro + TrackNetV3 originale), pesi di partenza dal Drive (`ckpts/TrackNet_best.pt`) |
-| 5 | dataset pubblico: scorciatoia sul Drive in `datasets/`, oppure lo scarica con gdown |
+| 5 | dataset pubblico: copia `Dataset.zip` nel tuo Drive con l'API di Google, lo scarica e lo scompatta |
 | 6 | lo prepara (circa 10.000 fotogrammi di addestramento, partite 9 e 10 per la validazione) e ne salva una copia sul Drive |
-| 7 | **prova** di 2-3 minuti: deve finire con `PROVA RIUSCITA` |
-| 8 | addestramento (15 epoche): risultati su Drive in `tracknet_finetune/run1/` |
+| 7 | **prova** di 2-3 minuti: se non riesce il notebook si ferma qui |
+| 8 | addestramento (15 epoche): risultati su Drive in `tracknet_finetune/run1/`; se è già finito salta, se era interrotto riprende |
 | 9 | grafico della validazione epoca per epoca |
-| 10 | **voto** sul set di test: pesi del badminton contro pesi nuovi |
+| 10 | **voto** sul set di test: pesi del badminton contro pesi nuovi (prima di etichettare si ferma con un messaggio) |
 
-La 10 si può lanciare anche prima di addestrare: dà il voto dei soli pesi del
-badminton.
+Se Colab si disconnette: riapri ed "Esegui tutto". Il dataset pronto torna dal
+Drive in pochi minuti e la cella 8 riprende dall'ultima epoca salvata.
 
-Se Colab si disconnette durante la 8: rilancia 1-6 e la 8 con `RIPRENDI = True`.
-
-Se la cella 5 non riesce a scaricare il dataset (Google limita gdown sulle
-cartelle con tanti file): apri la
-[cartella del dataset](https://drive.google.com/drive/folders/11r0RUaQHX7I3ANkaYG4jOxXK1OYo01Ut),
-clic destro sul nome → Organizza → **Aggiungi scorciatoia** → `Il mio
-Drive/rf_coach_vision/datasets`, e rilancia la 5.
+Il dataset è il file `Dataset.zip` nella
+[cartella condivisa](https://drive.google.com/drive/folders/11r0RUaQHX7I3ANkaYG4jOxXK1OYo01Ut)
+(gli altri due file lì non servono). Google ne blocca spesso il download
+diretto ("Too many users have viewed or downloaded this file"): per questo la
+cella 5 ne fa prima una copia nel tuo Drive (`Il mio Drive/Dataset_tennis_TrackNet.zip`,
+fatta dai server di Google, a cui il limite non si applica) e scarica quella.
+Se anche la copia non riuscisse: clic destro su `Dataset.zip` → Crea una copia,
+e rilancia la cella 5.
 
 ## Come leggere il voto (`voto.md`)
 
