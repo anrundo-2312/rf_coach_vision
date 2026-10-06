@@ -66,13 +66,18 @@ Passi:
 
 Se in una finestra la posa indica un colpo ma il contatto non si trova (per
 esempio la pallina passa dietro il corpo del giocatore), il colpo viene
-scritto lo stesso, senza velocita', con una nota.
+scritto lo stesso, senza velocita', con una nota. La riga va alla fine del
+tratto piu' lungo della posa o, se la finestra dura piu' di FINESTRA_LUNGA_S
+secondi, al picco di velocita' del polso (picco_polso).
 
 7. SOLO DIREZIONE. Se in una finestra non esce nessuna velocita', si rifa' la
    ricerca della pallina in modo ESTESO (palla_locale.py: pallina mossa dal
    colpo e riaggancio a TrackNet; nel servizio si parte dal lancio). Se la
    traiettoria spiega bene i punti se ne tiene solo la direzione: con la
    pallina mossa al colpo la velocita' esce troppo bassa (vedi solo_direzione).
+   La riga trovata cosi' prende il posto delle righe senza misura dello stesso
+   colpo: quelle entro 15 frame e la riga "contatto non visibile" della stessa
+   finestra a qualunque distanza (STESSA_FINESTRA).
 
 Dopo questo file si eseguono direzione_nascosta.py (direzione dei colpi con il
 contatto coperto) e velocita_rimbalzo.py (velocita' stimata dal rimbalzo per i
@@ -102,6 +107,13 @@ CENTRO_X = 5.485            # riga centrale del campo (m)
 BUCO_TRATTI = 5             # frame di "attesa" tollerati dentro un colpo
 DURATA_MINIMA = 8           # frame non-attesa minimi per considerarlo un colpo
 MARGINE_FINESTRA = 10       # frame aggiunti prima e dopo il tratto
+# Finestra piu' lunga di FINESTRA_LUNGA_S secondi (per esempio la preparazione di Giorgio prima del primo
+# dritto): la riga "contatto non visibile" va al picco di velocita' del polso (lo swing) invece che alla fine
+# del tratto piu' lungo della posa. None = come prima.
+FINESTRA_LUNGA_S = 3.0
+# Il contatto trovato dalla ricerca estesa sostituisce la riga "contatto non visibile" della stessa finestra
+# anche se e' a piu' di 15 frame (era una seconda scritta senza dati sullo stesso colpo). False = come prima.
+STESSA_FINESTRA = True
 
 # Contatto
 PASSI = 3                   # frame prima/dopo per la direzione della pallina
@@ -560,6 +572,38 @@ def pallina_vicina(traccia, t):
     return n
 
 
+def picco_polso(t, a, b):
+    """
+    Frame tra a e b in cui un polso si muove piu' veloce: lo swing. Velocita' = spostamento del polso piu'
+    veloce da un frame al successivo, in altezze del giocatore al secondo (uguale a ogni risoluzione), media su
+    3 frame. None se la posa non da' i polsi.
+    """
+    pol, box = t["polsi"], t["box"]
+    v = np.zeros(b - a + 1)
+    for k, f in enumerate(range(a, b + 1)):
+        if f < 2:
+            continue
+        h = box[f - 1][3] - box[f - 1][1]
+        if not np.isfinite(h) or h <= 0:
+            continue
+        d = [np.hypot(*(pol[f - 1][2 * j:2 * j + 2] - pol[f - 2][2 * j:2 * j + 2])) for j in range(2)]
+        d = [x for x in d if np.isfinite(x)]
+        if d:
+            v[k] = max(d) / h * t["fps"]
+    if not v.any():
+        return None
+    return a + int(np.argmax(np.convolve(v, np.ones(3) / 3, mode="same")))
+
+
+def colpo_vicino(classi, f, a, b):
+    """Classe piu' votata dalla posa nei 16 frame fino a f; se non ce ne sono, in tutta la finestra a..b."""
+    for da, fino in ((f - 15, f), (a, b)):
+        voti = Counter(classi[g] for g in range(da, fino + 1) if classi.get(g) not in (None, "attesa"))
+        if voti:
+            return voti.most_common(1)[0][0]
+    return ""
+
+
 def fine_tratto_piu_lungo(classi, a, b, colpo):
     migliore, inizio = (0, b), None
     for f in range(a, b + 2):
@@ -691,10 +735,17 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         if not contatti and pallina_vicina(traccia, t) >= 3:
             # la posa dice che c'e' un colpo e la pallina arriva al giocatore, ma attorno
             # al contatto non si vede (coperta dal corpo o persa): colpo senza velocita'.
-            # Il contatto e' circa alla fine del tratto piu' lungo della classe prevalente.
+            # Il contatto e' circa alla fine del tratto piu' lungo della classe prevalente; se la
+            # finestra e' lunga (preparazione, palleggi) al picco di velocita' del polso.
             tratti = Counter(classi.get(f) for f in range(a, b + 1) if classi.get(f) not in (None, "attesa"))
             colpo = tratti.most_common(1)[0][0]
             fine = fine_tratto_piu_lungo(classi, a, b, colpo)
+            picco = picco_polso(t, a, b) if FINESTRA_LUNGA_S and (b - a) / t["fps"] > FINESTRA_LUNGA_S else None
+            if picco is not None:
+                fine, colpo = picco, colpo_vicino(classi, picco, a, b)
+                if verbose:
+                    print(f"  finestra lunga {(b - a) / t['fps']:.1f} s: contatto non visibile al picco del polso, "
+                          f"frame {picco} {colpo}")
             colpi.append({"frame": fine, "tempo_s": round(float(t["tempo"][fine - 1]), 3), "colpo": colpo,
                           "calibrazione": fonte, "nota": "contatto non visibile: pallina coperta o persa"})
         if not any(r.get("velocita_uscita_kmh", "") != "" for r in colpi[inizio_righe:]):
@@ -779,8 +830,13 @@ def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam
             "punti_usati": r["n_points"], "errore_px": round(r["rms_px"], 1),
             "nota": "pallina mossa al colpo: solo direzione (velocita' non affidabile)",
             "_punti": [(f, *traccia[f][:2]) for f in usati]})
-        # sostituisce le righe senza misura dello stesso colpo trovate dalla ricerca normale
-        for vecchia in [x for x in righe if abs(x["frame"] - fc) <= 15 and x.get("velocita_uscita_kmh", "") == ""]:
+        # sostituisce le righe senza misura dello stesso colpo trovate dalla ricerca normale: quelle entro 15
+        # frame e, con STESSA_FINESTRA, la riga "contatto non visibile" della finestra a qualunque distanza
+        # (e' solo il segnaposto del colpo; video_alcaraz_palline_sparse: 800 trovato, segnaposto al 835)
+        vecchie = [x for x in righe if any(x is c for c in colpi) and x.get("velocita_uscita_kmh", "") == ""
+                   and (abs(x["frame"] - fc) <= 15
+                        or (STESSA_FINESTRA and str(x.get("nota", "")).startswith("contatto non visibile")))]
+        for vecchia in vecchie:
             colpi.remove(vecchia)
         colpi.append(riga)
         if verbose:

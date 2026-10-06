@@ -461,7 +461,7 @@ Il punto debole è la profondità vicino al fondo lontano. Con la camera a 2,2 m
 
 Tre richieste dell'utente, insieme.
 
-**La velocità media del volo.** È la distanza a terra dal contatto al rimbalzo diviso il tempo di volo: quella che mostra SwingVision (per il servizio di Nicola 83 km/h, contro i nostri 116 d'uscita). Non serviva un calcolo nuovo: nelle stime dal rimbalzo è il dato di partenza ("media fino al rimbalzo" nella nota); per i colpi misurati bastano il contatto del calcolo e il rimbalzo del passo 6. `velocita_rimbalzo.py` la scrive nella colonna `velocita_media_kmh` (passo 7). Sul video sta in piccolo sotto la velocità d'uscita. La media è sempre più bassa dell'uscita, perché l'aria frena la pallina: sui video di prova il 76-87%. Su swing_vision 412 invece viene 93 contro 90 misurati: una delle due misure è sbagliata (dalla media il dritto sarebbe sui 120 km/h, quindi probabilmente i 90 sono bassi). Lì la media non si mostra e la nota lo dice; i 90 km/h restano, come deciso (vedi 8.14, il controllo col rimbalzo sui km/h misurati).
+**La velocità media del volo.** È la distanza a terra dal contatto al rimbalzo diviso il tempo di volo: quella che mostra SwingVision (per il servizio di Nicola 83 km/h, contro i nostri 116 d'uscita). Non serviva un calcolo nuovo: nelle stime dal rimbalzo è il dato di partenza ("media fino al rimbalzo" nella nota); per i colpi misurati bastano il contatto del calcolo e il rimbalzo del passo 6. `velocita_rimbalzo.py` la scrive nella colonna `velocita_media_kmh` (passo 7). Sul video sta in piccolo sotto la velocità d'uscita. La media è sempre più bassa dell'uscita, perché l'aria frena la pallina: sui video di prova il 76-87%. Su swing_vision 412 invece viene 93 contro 90 misurati: una delle due misure è sbagliata (dalla media il dritto sarebbe sui 120 km/h, quindi probabilmente i 90 sono bassi). Lì la media non si mostra e la nota lo dice; i 90 km/h restano, come deciso (vedi 8.16, il controllo col rimbalzo sui km/h misurati).
 
 **Le metriche.** `riepilogo.py` conta per tipo di colpo dentro, fuori ed esito non visto, con queste scelte dell'utente: buono = dentro, errore = fuori, rimbalzo non visto = non conta. Restano fuori dal conto i colpi senza velocità né direzione (sul video in grigio), che nei video di prova sono falsi colpi (alcaraz 246 e 1302) o un colpo coperto del tutto (swing_vision 1379). Alcaraz: 6 dentro su 7 con esito (dritti 3/4, rovesci 2/2, servizio 1/1), 1 errore (il 418, lungo, che però è al limite della precisione: 8.8).
 
@@ -516,7 +516,33 @@ Nei colpi «solo direzione» il contatto c'è: l'ha trovato la ricerca estesa di
 
 **Prova A/B** (catena completa, 6 video): cambia solo Giorgio 39,8 s, da solo direzione a circa 108 km/h, media del volo 86 (rapporto 0,80, normale), direzione invariata. Le altre righe «solo direzione» (swing_vision 302, Giorgio 49,7 s) non hanno rimbalzo e restano così. **Controllo del metodo** sui 5 colpi dove i passi 1-5 funzionano già, rifacendo il calcolo con il contatto della riga: swing_vision 553 120 → 111, alcaraz 141 166 → 166, alcaraz 418 149 → 146, Giorgio 904 108 → 98, 1806 101 → 94. Stesso valore o fino al 9% in meno: il contatto della riga è 2-5 fotogrammi prima di quello trovato risalendo, quindi il volo è un po' più lungo. Quei colpi non cambiano: la regola vale solo dove prima non c'era nessuna velocità. `PUNTO4 = False` la spegne.
 
-### 8.14 Cosa ho provato e scartato
+### 8.14 La riga al picco del polso nelle finestre lunghe (5 ottobre)
+
+Quando la posa dice che c'è un colpo e la pallina arriva al giocatore ma il contatto non si vede, `velocita_uscita.py` scrive una riga «contatto non visibile» alla fine del tratto più lungo della classe prevalente. Sul video Giorgio la prima finestra va da 1,5 a 9,4 s: il classificatore vede «dritto» già nella preparazione e nei palleggi, e la riga cadeva a 5,9 s, quando Giorgio non colpisce nessuna pallina. Il dritto vero è a circa 8,8 s.
+
+**Il picco del polso** (`picco_polso`). Per ogni fotogramma: lo spostamento del polso più veloce rispetto al fotogramma prima, diviso l'altezza del riquadro del giocatore e moltiplicato per gli fps (altezze al secondo, uguale a ogni risoluzione), media su 3 fotogrammi. Il massimo nella finestra è lo swing. Confronto sui colpi di Giorgio con il contatto controllato a occhio:
+
+| Colpo | Riga di prima | Picco del polso | Contatto vero |
+|---|---|---|---|
+| dritto, finestra di 7,9 s | 179 | 263 | circa 263 |
+| dritto 11,5 s | 346 | 357 | circa 333 |
+| dritto 13,4 s | 403 | 423 | circa 424 |
+
+Nella finestra lunga il picco è molto meglio; su un colpo normale può allontanarsi dal contatto (11,5 s).
+
+**La regola.** Solo se la finestra dura più di `FINESTRA_LUNGA_S` = 3 s la riga va al picco del polso; il colpo è il più votato dalla posa nei 16 fotogrammi fino al picco (`colpo_vicino`). Con la riga al momento giusto anche `direzione_nascosta.py` e `velocita_rimbalzo.py` guardano il momento giusto.
+
+**Prova A/B** (catena completa, 6 video): cambiano solo Giorgio, da 179 a 263, e swing_vision, da 1379 a 1377 (sempre senza dati). Nessuna riga con la velocità cambia. Sul dritto di Giorgio la stima dal rimbalzo ora trova il rimbalzo: circa 68 km/h, dal centro verso sinistra, dentro, corta. Probabilmente un po' alta: la stima prende come contatto il primo punto in cui TrackNet rivede la pallina (frame 272, 9,05 s), perché subito dopo il colpo TrackNet non la vede; con il contatto a 8,8 s il volo dura 1,39 s invece di 1,12 e verrebbe circa 58 km/h. Swing_vision 302 e Giorgio 49,7 s sono finestre lunghe, ma hanno un contatto trovato dalla ricerca estesa e non cambiano. Il calcolo usa i polsi già letti: tempo trascurabile. `FINESTRA_LUNGA_S = None` spegne la regola.
+
+### 8.15 Una sola riga per colpo nella ricerca estesa (5 ottobre)
+
+Su video_alcaraz_palline_sparse il rovescio a 13,3 s aveva due scritte: la ricerca normale non vedeva il contatto e metteva la riga «contatto non visibile» alla fine della finestra (frame 835, 13,9 s); poi la ricerca estesa trovava il contatto vero al frame 800 e scriveva la sua riga. La riga della ricerca estesa sostituiva quelle senza misura solo entro 15 frame (0,25 s a 60 fps): qui erano 35, quindi restavano tutte e due, la seconda senza dati.
+
+La riga «contatto non visibile» è solo il segnaposto del colpo che la posa vede nella finestra: ora (`STESSA_FINESTRA`) la riga della ricerca estesa la sostituisce a qualunque distanza, sempre nella stessa finestra. Le righe «misura scartata» restano sostituite solo entro 15 frame, come prima.
+
+**Prova A/B** (catena completa, 7 video: i 6 di sempre più video_alcaraz_palline_sparse): sparisce solo la riga doppia al 835 di video_alcaraz_palline_sparse; tutto il resto identico. `STESSA_FINESTRA = False` torna a prima.
+
+### 8.16 Cosa ho provato e scartato
 
 - **Ripartire a cercare la pallina dopo 8 frame vuoti** invece di arrendersi: rompeva il rovescio di Nicola.
 - **Usare la ricerca estesa anche per i km/h**: velocità troppo basse (vedi sopra).

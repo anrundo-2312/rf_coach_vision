@@ -287,7 +287,10 @@ salvata, senza finestre (anche su Colab).
    `rimbalzo_y_m`.
 6. Se la posa indica un colpo, la pallina arriva al giocatore ma il contatto
    non si vede (pallina coperta dal corpo), il colpo viene scritto lo stesso,
-   senza velocita', con una nota.
+   senza velocita', con una nota. La riga va alla fine del tratto piu' lungo
+   della posa; se la finestra del colpo dura piu' di 3 secondi va invece
+   all'istante in cui il polso si muove piu' veloce, cioe' lo swing (vedi
+   "Riga al picco del polso nelle finestre lunghe").
 7. **Controllo del risultato.** Il calcolo non cambia: si decide solo se
    mostrarlo. Velocita' e direzione NON si scrivono quando la traiettoria 3D
    non spiega i punti della pallina (errore sopra 6 px, riportato a 1080p;
@@ -326,6 +329,12 @@ salvata, senza finestre (anche su Colab).
    124 km/h e dritto 66 km/h, sotto la velocita' media fino al rimbalzo, 137
    e circa 105 km/h). Nel CSV la nota e' "pallina mossa al colpo: solo
    direzione".
+   La riga trovata cosi' prende il posto delle righe senza misura dello
+   stesso colpo: quelle entro 15 frame e, dal 5 ottobre, la riga "contatto
+   non visibile" della stessa finestra a qualunque distanza
+   (`STESSA_FINESTRA`). Prima su video_alcaraz_palline_sparse il rovescio a
+   13,3 s aveva una seconda scritta senza dati a 13,9 s (la riga messa alla
+   fine della finestra, 35 frame dopo).
 
 Tutte le soglie sono in cima al file.
 
@@ -820,6 +829,42 @@ restano uguali. Quando il contatto non si vede (righe "contatto non
 visibile", per esempio i falsi servizi alcaraz 1302 e Giorgio 32,3 s) il
 controllo non si puo' fare e la riga resta com'era. `SERVIZIO_SOPRA_TESTA =
 False` in cima a `velocita_uscita.py` lo spegne.
+
+## Riga al picco del polso nelle finestre lunghe (5 ottobre)
+
+Quando il contatto non si vede, la riga "contatto non visibile" va alla fine
+del tratto piu' lungo della classe prevalente della posa. In una finestra
+lunga questo puo' essere lontano dal colpo: sul video Giorgio la posa vede un
+"dritto" da 1,5 a 9,4 s (preparazione e palleggi, poi il colpo vero a circa
+8,8 s), e la riga cadeva a 5,9 s, quando Giorgio non colpisce nessuna
+pallina.
+
+Ora (`picco_polso` in `velocita_uscita.py`): se la finestra dura piu' di
+`FINESTRA_LUNGA_S` = 3 secondi, la riga va al fotogramma in cui un polso si
+muove piu' veloce, cioe' lo swing (spostamento da un fotogramma al
+successivo in altezze del giocatore al secondo, quindi uguale a ogni
+risoluzione, media su 3 fotogrammi). Il tipo di colpo e' quello piu' votato
+dalla posa nei 16 fotogrammi fino a li'. Con la riga al momento giusto anche
+`direzione_nascosta.py` e `velocita_rimbalzo.py` guardano il momento giusto.
+Solo nelle finestre lunghe perche' sui colpi normali il picco del polso puo'
+cadere lontano dal contatto (Giorgio 11,5 s: picco al frame 357, contatto
+vero circa 333), mentre la fine del tratto va gia' bene.
+
+Prova A/B (catena completa) su Nicola, Djokovic, swing_vision, alcaraz,
+test_tennis_1 e Giorgio: cambiano solo 2 righe, nessuna di quelle con la
+velocita'.
+
+- Giorgio, dritto: da 5,9 s (frame 179, senza dati) a 8,73 s (frame 263).
+  Ora `velocita_rimbalzo.py` trova il rimbalzo: circa 68 km/h (dal
+  rimbalzo), dal centro verso sinistra, dentro, corta. Probabilmente un po'
+  alta: la stima prende come contatto il primo punto in cui TrackNet rivede
+  la pallina (9,05 s), quindi il volo esce piu' corto del vero; con il
+  contatto a 8,8 s verrebbe circa 58 km/h.
+- swing_vision, rovescio: da frame 1379 a 1377, sempre senza dati.
+
+Le altre finestre lunghe (swing_vision 302, Giorgio 49,7 s) hanno il
+contatto della ricerca estesa e non cambiano. `FINESTRA_LUNGA_S = None` in
+cima a `velocita_uscita.py` lo spegne.
 
 ## Precisione da aspettarsi
 
