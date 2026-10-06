@@ -3,11 +3,11 @@ estrai_frame.py - estrae dai video i fotogrammi da annotare per il
 fine-tuning del rilevatore di racchetta.
 
 Uso (dalla cartella rfCoach_vision):
-    python finetuning/estrai_frame.py                 # tutti i video in inputs/
-    python finetuning/estrai_frame.py video1.mp4 ...  # solo questi
-    python finetuning/estrai_frame.py --per-video 40  # quanti frame per video (default 60)
+    python finetuning_racchetta/estrai_frame.py                 # tutti i video in inputs/
+    python finetuning_racchetta/estrai_frame.py video1.mp4 ...  # solo questi
+    python finetuning_racchetta/estrai_frame.py --per-video 40  # quanti frame per video (default 60)
 
-I frame finiscono in finetuning/dataset/images/, ridimensionati a 1920 px
+I frame finiscono in finetuning_racchetta/dataset/images/, ridimensionati a 1920 px
 di larghezza: piu' leggeri da caricare su Roboflow/CVAT e comunque molto
 piu' grandi della risoluzione a cui lavora il modello (960).
 
@@ -23,7 +23,7 @@ import glob
 import cv2
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT_DIR = os.path.join(ROOT, "finetuning", "dataset", "images")
+OUT_DIR = os.path.join(ROOT, "finetuning_racchetta", "dataset", "images")
 MAX_WIDTH = 1920
 
 
@@ -76,4 +76,4 @@ if __name__ == "__main__":
         print(f"{os.path.basename(v)}: {n} frame")
 
     print(f"\nTotale: {totale} frame in {OUT_DIR}")
-    print("Prossimo passo: pre-annotazione (finetuning/preannota.py, va eseguito su Colab o dove c'e' ultralytics).")
+    print("Prossimo passo: pre-annotazione (finetuning_racchetta/preannota.py, va eseguito su Colab o dove c'e' ultralytics).")

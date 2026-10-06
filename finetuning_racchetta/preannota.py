@@ -2,8 +2,8 @@
 preannota.py - pre-annotazione automatica dei frame estratti.
 
 Fa girare il rilevatore di racchetta attuale (piu' il filtro "deve toccare
-la mano") su ogni immagine di finetuning/dataset/images e scrive le
-etichette in formato YOLO in finetuning/dataset/labels.
+la mano") su ogni immagine di finetuning_racchetta/dataset/images e scrive le
+etichette in formato YOLO in finetuning_racchetta/dataset/labels.
 
 NON sostituisce il tuo lavoro: serve a partire da riquadri gia' quasi
 giusti, che tu correggi (sposti, aggiungi, cancelli) invece di disegnarli
@@ -14,9 +14,9 @@ ignorarle.
 Va eseguito dove ci sono torch e ultralytics: su Colab, oppure nel tuo
 ambiente Python su Windows.
 
-    python finetuning/preannota.py                # soglia 0.15
-    python finetuning/preannota.py --conf 0.10    # piu' candidati, piu' correzioni
-    python finetuning/preannota.py --anteprime    # salva anche le immagini con i riquadri
+    python finetuning_racchetta/preannota.py                # soglia 0.15
+    python finetuning_racchetta/preannota.py --conf 0.10    # piu' candidati, piu' correzioni
+    python finetuning_racchetta/preannota.py --anteprime    # salva anche le immagini con i riquadri
 
 Le funzioni di filtro NON sono duplicate: vengono lette da analyze.py, che
 resta l'unica fonte. Se cambiano li', cambiano anche qui.
@@ -33,9 +33,9 @@ import numpy as np
 from ultralytics import YOLO
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IMG_DIR = os.path.join(ROOT, "finetuning", "dataset", "images")
-LBL_DIR = os.path.join(ROOT, "finetuning", "dataset", "labels")
-PREVIEW_DIR = os.path.join(ROOT, "finetuning", "dataset", "anteprime")
+IMG_DIR = os.path.join(ROOT, "finetuning_racchetta", "dataset", "images")
+LBL_DIR = os.path.join(ROOT, "finetuning_racchetta", "dataset", "labels")
+PREVIEW_DIR = os.path.join(ROOT, "finetuning_racchetta", "dataset", "anteprime")
 
 
 def carica_da_analyze():

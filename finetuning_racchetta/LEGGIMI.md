@@ -9,12 +9,12 @@ nostri video.
 ## I passi
 
 1. **Estrazione dei frame** (sul PC, veloce):
-   `python finetuning/estrai_frame.py --per-video 45`
-   Salva in `finetuning/dataset/images` frame distribuiti su tutta la durata di
+   `python finetuning_racchetta/estrai_frame.py --per-video 45`
+   Salva in `finetuning_racchetta/dataset/images` frame distribuiti su tutta la durata di
    ogni video di `inputs/`, ridimensionati a 1920 px.
 
 2. **Pre-annotazione** (su Colab, serve la GPU): cella apposita in
-   `rf_coach_finetune.ipynb`, che lancia `finetuning/preannota.py`.
+   `rf_coach_finetune.ipynb`, che lancia `finetuning_racchetta/preannota.py`.
    Propone un riquadro per la racchetta usando il modello attuale piu' il filtro
    della mano. Serve solo a partire da qualcosa di gia' quasi giusto.
 
