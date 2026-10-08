@@ -77,6 +77,17 @@ TRACKNET_MODE = "weight"       # USA QUI NON OVERLAP o WEIGHT
 # esecuzione, indipendentemente da questa opzione.
 TRACKNET_FORCE_RECOMPUTE = False
 
+# Pesi di TrackNet:
+#   ""        -> quelli del programma (tracknet3/ckpts/TrackNet_best.pt, badminton).
+#   percorso  -> un altro file .pt, per PROVARE pesi nuovi (es. quelli di
+#                tracknet_finetune/run1/TrackNet_tennis.pt su Drive). La cache
+#                della pallina prende l'etichetta dei pesi nel nome, cosi' non
+#                si mescola con quella del programma; gli altri risultati
+#                (outputs/) invece hanno solo il nome del video: per un
+#                confronto, analizza una copia del video con un suffisso
+#                (su Colab lo fa la cella 4b con PESI).
+TRACKNET_PESI = ""
+
 # Riempimento dei buchi della racchetta: se la racchetta sparisce per al
 # massimo questo numero di frame e poi ricompare, le posizioni mancanti
 # vengono stimate interpolando tra l'ultimo e il nuovo rilevamento
@@ -811,7 +822,8 @@ elif extension in video_extensions:
     # PALLINA (TrackNet, sull'intero video, un'unica volta)
     # =========================
 
-    ball_positions = ball_tracknet.compute_ball_trajectory(input_file, TRACKNET_MODE, force=TRACKNET_FORCE_RECOMPUTE)
+    ball_positions = ball_tracknet.compute_ball_trajectory(input_file, TRACKNET_MODE, force=TRACKNET_FORCE_RECOMPUTE,
+                                                           pesi=TRACKNET_PESI)
     ball_velocita = ball_speeds(ball_positions, fps)
 
     output_file = os.path.join(output_dir, f"{input_name}_combined_{TRACKNET_MODE}.mp4")

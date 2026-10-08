@@ -12,6 +12,9 @@ di analyze.py.
 
 CACHE: il risultato viene salvato in tracknet3/pred_result/<video>_ball_<modalita>.csv
 (una copia per modalita', "weight" o "nonoverlap", cosi' si possono confrontare).
+Con pesi diversi da quelli del programma (TRACKNET_PESI in analyze.py) il nome
+prende anche l'etichetta dei pesi: <video>_ball_<modalita>_<pesi>.csv, cosi' le
+previsioni di pesi diversi non si mescolano.
 La prima volta che analizzi un video TrackNet lo calcola (su CPU in 4K
 richiede ~20 minuti); le volte successive sullo STESSO video il CSV viene
 riusato e la pallina e' disponibile subito. Si ricalcola da solo se il
@@ -24,7 +27,9 @@ Ogni posizione restituita e' una tupla (x, y, conf, source):
 
 Nota: i pesi pubblici di TrackNetV3 sono addestrati sul badminton, non sul
 tennis dalla vostra inquadratura: per una buona precisione servira'
-fine-tuning sui vostri video.
+fine-tuning sui vostri video. Per PROVARE pesi nuovi (es. quelli di
+tracknet_finetune/) senza toccare la cache del programma: TRACKNET_PESI in
+analyze.py (o PESI nella cella 4b del notebook di Colab).
 """
 
 import os
@@ -41,6 +46,15 @@ INPAINTNET_CKPT = os.path.join(TRACKNET_DIR, "ckpts", "InpaintNet_best.pt")
 PRED_DIR = os.path.join(TRACKNET_DIR, "pred_result")
 
 
+def etichetta_pesi(percorso):
+    """Nome breve di un file di pesi, per la cache e i messaggi: 'run1' per .../run1/TrackNet_tennis.pt
+    (il nome che scrive sempre tracknet_finetune/addestra.py), altrimenti il nome del file senza estensione."""
+    stem = os.path.splitext(os.path.basename(percorso))[0]
+    if stem == "TrackNet_tennis":
+        return os.path.basename(os.path.dirname(os.path.abspath(percorso)))
+    return stem
+
+
 def _cache_valid(csv_path, video_file):
     if not os.path.exists(csv_path):
         return False
@@ -51,21 +65,29 @@ def _cache_valid(csv_path, video_file):
     return "Conf" in header and "Source" in header
 
 
-def compute_ball_trajectory(video_file, mode="weight", force=False):
+def compute_ball_trajectory(video_file, mode="weight", force=False, pesi=""):
     """
     force: se True ignora il risultato salvato, ricalcola e lo sovrascrive.
     mode: "weight" (finestra scorrevole, ~8 analisi per frame mediate) oppure
           "nonoverlap" (una analisi per frame, piu' veloce).
+    pesi: file dei pesi di TrackNet; "" = quelli del programma
+          (tracknet3/ckpts/TrackNet_best.pt). Con pesi diversi la cache prende
+          anche la loro etichetta nel nome (vedi etichetta_pesi).
     Restituisce {numero_frame (0-based): (x, y, conf, source) oppure None}.
     Restituisce {} (senza errori) se i pesi mancano o TrackNet fallisce.
     """
 
-    if not os.path.exists(TRACKNET_CKPT):
-        print(
-            "[pallina] Pesi TrackNet non trovati (vedi tracknet3/ckpts/LEGGIMI.txt): "
-            "proseguo senza pallina.\n"
-        )
+    ckpt = os.path.abspath(pesi) if pesi else TRACKNET_CKPT
+    if not os.path.exists(ckpt):
+        if pesi:
+            print(f"[pallina] Pesi TrackNet non trovati: {ckpt} (TRACKNET_PESI): proseguo senza pallina.\n")
+        else:
+            print(
+                "[pallina] Pesi TrackNet non trovati (vedi tracknet3/ckpts/LEGGIMI.txt): "
+                "proseguo senza pallina.\n"
+            )
         return {}
+    suffisso = f"_{etichetta_pesi(ckpt)}" if pesi else ""
 
     os.makedirs(PRED_DIR, exist_ok=True)
 
@@ -75,11 +97,12 @@ def compute_ball_trajectory(video_file, mode="weight", force=False):
         return {}
 
     raw_csv = os.path.join(PRED_DIR, f"{video_name}_ball.csv")  # nome scritto da predict.py
-    csv_path = os.path.join(PRED_DIR, f"{video_name}_ball_{mode}.csv")
+    csv_path = os.path.join(PRED_DIR, f"{video_name}_ball_{mode}{suffisso}.csv")
 
     # Un risultato gia' nel formato nuovo ma senza modalita' nel nome e'
-    # stato prodotto con la modalita' di default ("weight"): lo adottiamo.
-    if mode == "weight" and not os.path.exists(csv_path) and _cache_valid(raw_csv, video_file):
+    # stato prodotto con la modalita' di default ("weight") e i pesi del
+    # programma: lo adottiamo.
+    if mode == "weight" and not pesi and not os.path.exists(csv_path) and _cache_valid(raw_csv, video_file):
         os.replace(raw_csv, csv_path)
 
     if not force and _cache_valid(csv_path, video_file):
@@ -89,7 +112,7 @@ def compute_ball_trajectory(video_file, mode="weight", force=False):
         sys.executable,
         os.path.join(TRACKNET_DIR, "predict.py"),
         "--video_file", os.path.abspath(video_file),
-        "--tracknet_file", TRACKNET_CKPT,
+        "--tracknet_file", ckpt,
         "--save_dir", PRED_DIR,
         "--eval_mode", mode,
     ]
@@ -99,8 +122,8 @@ def compute_ball_trajectory(video_file, mode="weight", force=False):
 
     # Unico messaggio mostrato: serve perche' questo passaggio dura parecchi
     # minuti e senza avviso sembrerebbe bloccato.
-    print(f"Calcolo traiettoria pallina con TrackNet, modalita' '{mode}' "
-          "(puo' richiedere diversi minuti)...")
+    print(f"Calcolo traiettoria pallina con TrackNet, modalita' '{mode}'"
+          + (f", pesi '{etichetta_pesi(ckpt)}'" if pesi else "") + " (puo' richiedere diversi minuti)...")
 
     start = time.time()
     result = subprocess.run(cmd, cwd=TRACKNET_DIR)

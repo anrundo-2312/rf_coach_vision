@@ -23,6 +23,7 @@ rilevatore della racchetta.)
 | `prepara_dataset_tennis.py` | Colab | converte il dataset pubblico nel formato di TrackNetV3 (ne prende una parte) |
 | `addestra.py` | Colab | il fine-tuning, con il codice originale di TrackNetV3 |
 | `valuta_tracknet.py` | Colab | il voto sul set di test: confronta pesi diversi sugli stessi fotogrammi |
+| `sguardo_veloce.py` | Colab | sguardo veloce senza etichette: pesi del badminton contro pesi nuovi sui nostri video (non è il voto) |
 | `test/lista_frame.csv`, `test/etichette_test.csv` | | il set di test (vanno su GitHub; le immagini in `test/fotogrammi/` no) |
 
 ## Passi
@@ -32,12 +33,13 @@ rilevatore della racchetta.)
     python tracknet_finetune/scegli_frame_test.py
 
 Video del test (mai usati per addestrare): `nicola_matarese_trim`,
-`zverev_djokovic_trim_swin_like`, `swing_vision_test1_trim`, `alcaraz` e il
-pezzo di `ex.mp4` fra 60 e 150 secondi (al massimo 10 colpi). Per ogni colpo
+`zverev_djokovic_trim_swin_like`, `alcaraz` e il pezzo di `ex.mp4` fra 60 e
+150 secondi (al massimo 10 colpi). Per scelta restano fuori
+`swing_vision_test1_trim`, `federer_trim` e `test_tennis_1`. Per ogni colpo
 trovato dal programma (`outputs/dati/<video>_velocita.csv`) prende i
 fotogrammi entro ±0,12 s; in più 10 fotogrammi a caso per video (20 per ex)
 lontani dai colpi, per contare anche i punti falsi. Con i dati di oggi sono
-465 fotogrammi (Alcaraz 160, ex 170, swing 55, Nicola 40, Djokovic 40). I video e i dati li cerca prima su Drive, poi in `inputs/` e
+410 fotogrammi (Alcaraz 160, ex 170, Nicola 40, Djokovic 40). I video e i dati li cerca prima su Drive, poi in `inputs/` e
 `outputs/dati/` del progetto.
 
 Scrive `test/lista_frame.csv` e le immagini in `test/fotogrammi/`. Non
@@ -91,6 +93,7 @@ volta, la copia del dataset nella cella 5).
 | Cella | Cosa fa |
 |---|---|
 | 1-4 | GPU, Drive, codice (il nostro + TrackNetV3 originale), pesi di partenza dal Drive (`ckpts/TrackNet_best.pt`) |
+| 4b | **sguardo veloce** (facoltativo, senza etichette): badminton contro pesi nuovi sui nostri video, attorno ai colpi del programma; si salta da solo se i pesi nuovi non ci sono |
 | 5 | dataset pubblico: copia `Dataset.zip` nel tuo Drive con l'API di Google, lo scarica e lo scompatta |
 | 6 | lo prepara (circa 10.000 fotogrammi di addestramento, partite 9 e 10 per la validazione) e ne salva una copia sul Drive |
 | 7 | **prova** di 2-3 minuti: se non riesce il notebook si ferma qui |
@@ -100,6 +103,17 @@ volta, la copia del dataset nella cella 5).
 
 Se Colab si disconnette: riapri ed "Esegui tutto". Il dataset pronto torna dal
 Drive in pochi minuti e la cella 8 riprende dall'ultima epoca salvata.
+
+**Sguardo veloce (cella 4b).** Si può lanciare subito dopo le celle 1-4, prima di
+etichettare. Per ogni video del test e per i fotogrammi attorno ai colpi del
+programma dice quante volte TrackNet vede la pallina (badminton contro pesi
+nuovi), quanti salti sospetti (più di 120 px a 1080p fra fotogrammi
+consecutivi) e punti isolati ci sono, e disegna ritagli con i punti
+sovrapposti (badminton = cerchio giallo, pesi nuovi = quadrato azzurro). **Non è
+il voto**: senza etichette un punto falso conta come "visto". Serve a capire
+presto se i pesi nuovi sono chiaramente peggio. Risultati su Drive in
+`tracknet_finetune/valutazione/sguardo/`; le previsioni restano in
+`valutazione/previsioni/` e la cella 10 le riusa.
 
 Il dataset è il file `Dataset.zip` nella
 [cartella condivisa](https://drive.google.com/drive/folders/11r0RUaQHX7I3ANkaYG4jOxXK1OYo01Ut)
@@ -166,12 +180,33 @@ modalità `weight`) ma **senza InpaintNet**: si misura TrackNet da solo.
   Tiny Objects in Sports Applications*, 2019. Il README non indica una
   licenza per i dati: uso didattico e di ricerca, citando l'articolo.
 
-## Dopo (non ancora fatto)
+## Risultato del voto (8 ottobre 2026)
 
-1. Se il voto migliora: integrazione nel programma.
-   - `ball_tracknet.py` con il file dei pesi scelto da impostazione;
-   - in `pred_result`, il nome del file di cache con il nome del modello (così
-     non si mescolano previsioni di pesi diversi);
-   - poi il confronto A/B sui video di riferimento.
-2. Se migliora poco: secondo fine-tuning con i nostri video (ex.mp4 tranne il
-   pezzo del test, Giorgio, palline sparse), etichettati come il test.
+Set di test: 410 fotogrammi etichettati (365 con pallina visibile, 192 mosse).
+Richiamo vicino al colpo: badminton 0,52, run1 0,42, run2 0,38; il criterio
+chiedeva +8-10 punti, quindi **i pesi nuovi non si integrano**. Contando i
+fotogrammi: vicino al colpo il badminton trova la pallina nel 43% dei casi e
+indica un'altra cosa nel 16%; run1 40% e 4%; run2 36% e 5%. Il fine-tuning sul
+dataset TV rende la rete prudente (meno punti falsi, piu' palline perse), e
+sulle partite in TV migliora: non si trasferisce ai nostri video. Dettagli in
+`valutazione/voto.md` e `confronto_*.csv` su Drive.
+
+## Provare pesi nuovi nel programma (senza integrarli)
+
+In `analyze.py` c'e' `TRACKNET_PESI` ("" = pesi del programma): con il percorso
+di un altro file `.pt` la pallina viene calcolata con quei pesi e la cache
+prende la loro etichetta nel nome (`<video>_ball_weight_run1.csv`). Su Colab,
+nel notebook principale, basta `PESI` nella cella 4b: il notebook analizza una
+copia del video con il suffisso dei pesi (`nicola_matarese_trim_run1.mp4`, con
+la sua calibrazione), cosi' i risultati di oggi restano e si confrontano i due
+`_velocita.mp4` e `_velocita.csv`.
+
+## Dopo
+
+1. Secondo fine-tuning con i nostri video (ex.mp4 tranne il pezzo del test,
+   Giorgio, palline sparse, video nuovi), etichettati con lo stesso strumento:
+   serve una lista di fotogrammi di addestramento (tratti continui attorno ai
+   colpi) e un convertitore nel formato di TrackNetV3. Voto sempre sugli
+   stessi 410 fotogrammi.
+2. Se un giorno un voto migliora: integrazione (pesi da impostazione gia'
+   pronta, poi A/B sui video di riferimento).

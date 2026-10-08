@@ -6,8 +6,9 @@ mano e li estrae come immagini, pronti per etichetta_pallina.py.
 
 Il set di test serve a dare il voto a TrackNet prima e dopo il fine-tuning: va
 fatto su video che NON vengono mai usati per addestrare. Di default:
-nicola_matarese_trim, zverev_djokovic_trim_swin_like, swing_vision_test1_trim,
-alcaraz e un pezzo di ex.mp4 (--ex_da / --ex_a, in secondi).
+nicola_matarese_trim, zverev_djokovic_trim_swin_like, alcaraz e un pezzo
+di ex.mp4 (--ex_da / --ex_a, in secondi). Per scelta (8/10) restano fuori
+swing_vision_test1_trim, federer_trim e test_tennis_1.
 
 Quali fotogrammi:
   - attorno a ogni colpo trovato dal programma (colonna "frame" di
@@ -49,8 +50,7 @@ try:
 except ImportError:
     CARTELLA_DRIVE = ""
 
-VIDEO_TEST = ["nicola_matarese_trim.mp4", "zverev_djokovic_trim_swin_like.mp4", "swing_vision_test1_trim.mp4",
-              "alcaraz.mp4", "ex.mp4"]
+VIDEO_TEST = ["nicola_matarese_trim.mp4", "zverev_djokovic_trim_swin_like.mp4", "alcaraz.mp4", "ex.mp4"]
 
 
 def trova(nome, cartelle):
