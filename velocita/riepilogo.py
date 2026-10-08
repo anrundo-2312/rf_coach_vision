@@ -29,6 +29,9 @@ Regole (decise il 2 ottobre):
   (velocita_rimbalzo.py, circa +-15-20%) insieme; si dice quante sono le une e
   le altre. Velocita' media del volo: la colonna velocita_media_kmh (distanza
   dal contatto al rimbalzo / tempo di volo, velocita_rimbalzo.py passo 7).
+- palle corte: i dritti e rovesci dentro con profondita' "palla corta" piu'
+  quelle riconosciute dalla serie di rimbalzi (velocita_rimbalzo.py passo 6b:
+  primo rimbalzo non visto, quindi esito "non visto");
 - percentuale di errori per tipo di colpo: fuori / colpi con l'esito visto
   (errori_percento). Nel servizio "dentro" vuol dire servizio valido (nel
   riquadro in diagonale) e "fuori" fallo: la scheda dice "validi" e "falli".
@@ -110,6 +113,8 @@ def riga_tipo(colpi, tipo):
     fuori = [c for c in cs if esito(c) == "fuori"]
     motivi = Counter(motivo_fuori(c) for c in fuori)
     prof = Counter(c.get("profondita", "") for c in dentro if c["colpo"] != "servizio")
+    # palle corte riconosciute dalla serie di rimbalzi (velocita_rimbalzo.py passo 6b): esito non visto
+    corte_serie = sum(1 for c in cs if c.get("rimbalzo_trovato_come") == "serie")
     # velocita' mostrate: corrette (CORREZIONE_VELOCITA)
     vel = [(corretta(x[0]), x[1]) for x in map(velocita_uscita, cs) if x is not None]
     volo = [corretta(c["velocita_media_kmh"]) for c in cs if c.get("velocita_media_kmh", "") not in ("", None)]
@@ -122,7 +127,7 @@ def riga_tipo(colpi, tipo):
         "fuori_lunga": motivi.get("lunga", 0), "fuori_larga": motivi.get("larga", 0),
         "fuori_altro": sum(n for m, n in motivi.items() if m not in ("lunga", "larga")),
         "profonde": prof.get("profonda", 0), "medie": prof.get("media", 0), "corte": prof.get("corta", 0),
-        "palle_corte": prof.get("palla corta", 0),
+        "palle_corte": prof.get("palla corta", 0) + corte_serie,
         "uscita_media_kmh": _media([v for v, _ in vel]),
         "uscita_max_kmh": round(max(v for v, _ in vel)) if vel else None,
         "uscita_misurate": sum(1 for _, k in vel if k == "misurata"),

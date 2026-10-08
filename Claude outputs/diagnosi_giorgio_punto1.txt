@@ -1,0 +1,365 @@
+DIAGNOSI GIORGIO (punto 1) - solo lettura, nessuna modifica al codice. Codice = versione sul PC; dati = catena completa su Giorgio.mp4.
+Legenda tabella: TrackNet = punto di TrackNet (F = tolto come pallina ferma); normale / estesa = traccia di palla_locale.segui
+(t = punto TrackNet, l = rilevatore di colore); polso/h = distanza dal polso piu' vicino in altezze del giocatore;
+cambio / dopo = le due misure di trova_contatti (soglie 2,5 e 2,4 altezze/s).
+"contatto vero" = istante preso dall'audio: il cambio di direzione visto nella traccia e' 2-5 frame PRIMA (262-263, ~333, 547, 1191).
+Le righe "[senza ferme, solo diagnosi]" sono una prova: velocita_rimbalzo.py usa tutti i punti di TrackNet.
+
+==============================================================================================================
+DRITTO 8,8 S   riga del CSV al frame 179 (5.93 s), contatto vero ~frame 264 (8.76 s)
+nota finale: contatto non visibile: pallina coperta o persa
+colpo dritto, usc -, rimb -, media -, direzione -, errore - px, rimbalzo passo 6: - (-) (-; -) m
+finestra della posa: 45-281 (1.47-9.32 s, 237 frame); con il margine 35-291; contatto vero DENTRO dalla finestra
+classi in tutta la finestra: {'dritto': 167, 'servizio': 53, 'rovescio': 8}
+voti nei 15 frame prima (riga 179): {'dritto': 16}  -> [('dritto', 16)]
+   sequenza: dri dri dri dri dri dri dri dri dri dri dri dri dri dri dri dri
+voti nei 15 frame prima (contatto vero 264): {'dritto': 12, 'servizio': 4}  -> [('dritto', 12)]
+   sequenza: ser ser dri ser ser dri dri dri dri dri dri dri dri dri dri dri
+TrackNet nella finestra: 34 punti, 0 tolti come palline ferme
+   palline ferme tolte entro 15 frame dal contatto vero: 0
+traccia normale: 35 punti (240-291), contatti []
+traccia estesa : 43 punti (240-291), contatti [278]
+frame     s     TrackNet            normale           estesa  polso/h  cambio N dopo N  cambio E dopo E
+  249  8.26   (1200,873)        (1125,671)l      (1125,671)l     0.07       0.8    1.0       0.8    1.0
+  250  8.29   (1206,903)        (1112,666)l      (1112,666)l     0.07       0.7    1.1       0.7    1.1
+  251  8.33   (1211,862)        (1098,659)l      (1098,659)l     0.07       0.5    1.1       0.5    1.1
+  252  8.36   (1215,832)        (1083,649)l      (1083,649)l     0.05       0.4    1.1       0.4    1.1
+  253  8.39   (1218,806)        (1068,638)l      (1068,638)l      nan      pochi punti      pochi punti
+  254  8.42   (1222,780)        (1053,626)l      (1053,626)l      nan      pochi punti      pochi punti
+  255  8.46            -                  -                -      nan                                  
+  256  8.49            -                  -                -      nan                                  
+  257  8.52            -                  -                -      nan                                  
+  258  8.56            -                  -                -      nan                                  
+  259  8.59            -                  -                -      nan                                  
+  260  8.62            -                  -                -      nan                                  
+  261  8.66            -                  -                -      nan                                  
+  262  8.69            -                  -                -      nan                                  
+  263  8.72            -         (943,523)l       (943,523)l      nan      pochi punti      pochi punti
+  264  8.76            -         (940,523)l       (940,523)l      nan      pochi punti      pochi punti <- contatto vero
+  265  8.79            -         (938,527)l       (938,527)l     0.02       0.3    0.3       0.3    0.3
+  266  8.82            -         (938,532)l       (938,532)l     0.02       0.2    0.3       0.2    0.3
+  267  8.86            -         (939,538)l       (939,538)l     0.01       0.2    0.3       0.2    0.3
+  268  8.89            -         (940,544)l       (940,544)l     0.02       0.0    0.4       0.0    0.4
+  269  8.92            -         (941,548)l       (941,548)l     0.03       0.0    0.4       0.0    0.4
+  270  8.96            -         (941,553)l       (941,553)l     0.01       0.0    0.4       0.0    0.4
+  271  8.99            -         (942,561)l       (942,561)l     0.03       0.0    0.3       0.0    0.3
+  272  9.02    (930,476)         (942,568)l       (942,568)l     0.03       0.1    0.3       0.1    0.3
+  273  9.06            -         (943,572)l       (943,572)l     0.01       0.1    0.4       0.1    0.4
+  274  9.09    (903,480)         (944,577)l       (944,577)l     0.01       0.0    0.4       0.9    1.0
+  275  9.12    (892,487)         (945,583)l       (945,583)l     0.02       0.1    0.4       0.8    0.6
+  276  9.16    (885,491)         (947,589)l       (947,589)l     0.03      pochi punti       1.0    0.9
+  277  9.19    (873,498)         (948,596)l       (948,596)l     0.05      pochi punti       2.2    1.9
+  278  9.22    (866,510)                  -      (1007,590)l     0.12                        3.6    2.7
+  279  9.26    (858,517)                  -       (985,567)l     0.09                        2.8    2.3
+cambio di direzione [normale]: massimo vicino al polso al frame 249: 0.8 h/s (soglia 2.5), dopo 1.0 (soglia 2.4), polso 0.07 h -> cambio 0.8 < 2.5; velocita' dopo 1.0 < 2.4
+cambio di direzione [estesa]: massimo vicino al polso al frame 278: 3.6 h/s (soglia 2.5), dopo 2.7 (soglia 2.4), polso 0.12 h -> SUPERA le soglie
+calcolo [estesa] al contatto 278 (dritto): errore 11.6 px a 1080p, velocita' 327 km/h, angolo -7.7, 9 punti -> la traiettoria non spiega i punti (errore 11.6 px a 1080p, massimo 6); velocita' 327 km/h fuori da 30-250
+velocita_rimbalzo (passi 1-3; questo file usa tutti i punti di TrackNet, palline ferme comprese):
+  [tutti i punti] passo 1: nessun rimbalzo TrackNet nel campo avversario tra 154 e 227
+  [senza ferme, solo diagnosi] passo 1: nessun rimbalzo TrackNet nel campo avversario tra 154 e 227
+passo 4 (colore): 0 punti aggiunti dal colore; rimbalzo non trovato
+passo 5 (ricostruito): non provato (riga 'contatto non visibile' senza tratto coperto)
+passo 6: NON eseguito (la riga non ha direzione). Solo diagnosi, cercato dopo il contatto vero: frame 305 (10.12 s), (3.1; 16.8) m, tracknet
+==============================================================================================================
+DRITTO 11,2 S   riga del CSV al frame 346 (11.49 s), contatto vero ~frame 336 (11.16 s)
+nota finale: contatto non visibile: pallina coperta o persa
+colpo dritto, usc -, rimb -, media -, direzione -, errore - px, rimbalzo passo 6: - (-) (-; -) m
+finestra della posa: 296-358 (9.82-11.89 s, 63 frame); con il margine 286-368; contatto vero DENTRO dalla finestra
+classi in tutta la finestra: {'dritto': 47, 'servizio': 6, 'rovescio': 3}
+voti nei 15 frame prima (riga 346): {'dritto': 16}  -> [('dritto', 16)]
+   sequenza: dri dri dri dri dri dri dri dri dri dri dri dri dri dri dri dri
+voti nei 15 frame prima (contatto vero 336): {'dritto': 12, 'servizio': 4}  -> [('dritto', 12)]
+   sequenza: dri dri dri dri ser ser ser ser dri dri dri dri dri dri dri dri
+TrackNet nella finestra: 83 punti, 16 tolti come palline ferme (frame 300-368)
+   palline ferme tolte entro 15 frame dal contatto vero: 5: 324(723,540), 335(705,547), 336(705,543), 337(701,540), 340(697,540)
+traccia normale: 49 punti (286-336), contatti []
+traccia estesa : 75 punti (286-367), contatti [335]
+frame     s     TrackNet            normale           estesa  polso/h  cambio N dopo N  cambio E dopo E
+  321 10.66   (1226,772)                  -                -      nan                                  
+  322 10.69   (1230,806)                  -                -      nan                                  
+  323 10.72    (723,536)         (723,536)t       (723,536)t     0.81       0.2    0.3       0.2    0.3
+  324 10.76    (723,540) F       (724,542)l       (724,542)l     0.82       0.2    0.5       0.2    0.5
+  325 10.79    (723,547)         (725,548)l       (725,548)l     0.84       0.2    0.5       0.2    0.5
+  326 10.82    (720,551)         (721,555)l       (721,555)l     0.84       0.2    0.4       0.2    0.4
+  327 10.86    (720,557)         (720,557)t       (720,557)t     0.84       0.2    0.3       0.2    0.3
+  328 10.89    (716,570)         (716,570)t       (716,570)t     0.82       0.6    0.2       0.6    0.2
+  329 10.92    (716,577)         (718,580)l       (718,580)l     0.78       0.9    0.4       0.9    0.4
+  330 10.96    (711,577)         (711,577)t       (711,577)t     0.81       0.8    0.4       0.8    0.4
+  331 10.99    (711,570)         (711,570)t       (711,570)t     0.63       0.5    0.3       0.5    0.3
+  332 11.02    (708,562)         (708,562)t       (708,562)t     0.54       0.2    0.2       0.2    0.2
+  333 11.06    (708,555)         (708,555)t       (708,555)t     0.54       0.2    0.2       0.2    0.2
+  334 11.09    (705,551)         (705,551)t       (705,551)t     0.53       0.3    0.1       0.3    0.1
+  335 11.12    (705,547) F       (708,550)l       (708,550)l     0.51      pochi punti       6.2    6.3
+  336 11.16    (705,543) F       (706,546)l       (706,546)l     0.51      pochi punti       6.1    6.1 <- contatto vero
+  337 11.19    (701,540) F                -                -      nan                                  
+  338 11.22   (1110,420)                  -                -      nan                                  
+  339 11.26   (1095,401)                  -      (1095,401)t     0.18                        6.7    1.0
+  340 11.29    (697,540) F                -      (1081,387)l     0.21                        6.5    0.8
+  341 11.32   (1065,371)                  -      (1070,374)l     0.23                        0.5    0.7
+  342 11.36   (1057,360)                  -      (1059,364)l     0.44                        0.5    0.6
+  343 11.39   (1046,351)                  -      (1049,356)l     0.46                        0.6    0.5
+  344 11.42   (1035,348)                  -      (1040,351)l     0.53                        0.5    0.5
+  345 11.46   (1027,345)                  -      (1031,348)l     0.27                        0.5    0.4
+  346 11.49   (1020,345)                  -      (1023,347)l     0.31                        0.4    0.4 <- riga
+  347 11.52   (1012,345)                  -      (1016,348)l     0.43                        0.4    0.4
+  348 11.56   (1005,348)                  -      (1009,350)l     0.59                        0.3    0.5
+  349 11.59   (1000,351)                  -      (1003,353)l     0.55                        0.3    0.5
+  350 11.62    (992,356)                  -       (997,358)l     0.61                        0.3    0.5
+  351 11.66    (990,360)                  -       (991,363)l     0.61                        0.2    0.5
+cambio di direzione [normale]: massimo vicino al polso al frame 334: 0.3 h/s (soglia 2.5), dopo 0.1 (soglia 2.4), polso 0.53 h -> cambio 0.3 < 2.5; velocita' dopo 0.1 < 2.4
+cambio di direzione [estesa]: massimo vicino al polso al frame 339: 6.7 h/s (soglia 2.5), dopo 1.0 (soglia 2.4), polso 0.18 h -> velocita' dopo 1.0 < 2.4
+calcolo [estesa] al contatto 335 (dritto): errore 35.6 px a 1080p, velocita' 327 km/h, angolo +5.8, 8 punti -> la traiettoria non spiega i punti (errore 35.6 px a 1080p, massimo 6); velocita' 327 km/h fuori da 30-250
+velocita_rimbalzo (passi 1-3; questo file usa tutti i punti di TrackNet, palline ferme comprese):
+  [tutti i punti] passo 1: rimbalzo al frame 330 (10.96 s) pixel (711,577) -> a terra (2.0; 19.6) m
+  [tutti i punti] passo 2: inizio_traiettoria risale dal 330 e si ferma al 323 (10.72 s), limite 315 (contatto non visibile)
+           perche': salto troppo grande tra 322 (1230, 806) e 323 (723, 536): 574 px/frame > 138
+           -> SCARTATO: volo 0.25 s fuori da (0.25, 1.6)
+  [senza ferme, solo diagnosi] passo 1: rimbalzo al frame 330 (10.96 s) pixel (711,577) -> a terra (2.0; 19.6) m
+  [senza ferme, solo diagnosi] passo 2: inizio_traiettoria risale dal 330 e si ferma al 323 (10.72 s), limite 315 (contatto non visibile)
+           perche': salto troppo grande tra 322 (1230, 806) e 323 (723, 536): 574 px/frame > 138
+           -> SCARTATO: volo 0.25 s fuori da (0.25, 1.6)
+passo 4 (colore): 0 punti aggiunti dal colore; rimbalzo non trovato
+passo 5 (ricostruito): non provato (riga 'contatto non visibile' senza tratto coperto)
+passo 6: NON eseguito (la riga non ha direzione). Solo diagnosi, cercato dopo il contatto vero: frame 352 (11.69 s), (0.5; 25.4) m, tracknet
+==============================================================================================================
+DRITTO ~46,4 S   riga del CSV al frame 1373 (45.69 s), contatto vero ~frame 1393 (46.35 s)
+nota finale: misura scartata: la traiettoria non spiega i punti (errore 11.1 px a 1080p, massimo 6)
+colpo servizio, usc -, rimb -, media -, direzione -, errore 11.1 px, rimbalzo passo 6: - (-) (-; -) m
+finestra della posa: 1350-1428 (44.92-47.52 s, 79 frame); con il margine 1340-1438; contatto vero DENTRO dalla finestra
+classi in tutta la finestra: {'dritto': 62, 'servizio': 10}
+voti nei 15 frame prima (riga 1373): {'servizio': 10, 'dritto': 6}  -> [('servizio', 10)]
+   sequenza: dri dri dri ser ser ser ser ser ser ser ser ser ser dri dri dri
+voti nei 15 frame prima (contatto vero 1393): {'dritto': 16}  -> [('dritto', 16)]
+   sequenza: dri dri dri dri dri dri dri dri dri dri dri dri dri dri dri dri
+TrackNet nella finestra: 82 punti, 0 tolti come palline ferme
+   palline ferme tolte entro 15 frame dal contatto vero: 0
+traccia normale: 93 punti (1340-1434), contatti [1373]
+traccia estesa : 94 punti (1340-1436), contatti [1373, 1398]
+frame     s     TrackNet            normale           estesa  polso/h  cambio N dopo N  cambio E dopo E
+ 1378 45.85   (1091,521)        (1125,507)l      (1125,507)l     0.21       2.1    0.3       2.1    0.3
+ 1379 45.89   (1095,506)        (1124,507)l      (1124,507)l     0.21       1.0    0.9       1.0    0.9
+ 1380 45.92   (1102,495)        (1130,507)l      (1130,507)l     0.22       0.4    1.6       0.4    1.6
+ 1381 45.95   (1113,480)        (1132,503)l      (1132,503)l     0.23       1.4    1.5       1.4    1.5
+ 1382 45.99            -        (1138,499)l      (1138,499)l     0.24       1.0    1.2       1.0    1.2
+ 1383 46.02            -        (1146,470)l      (1146,470)l     0.30       0.4    0.7       0.4    0.7
+ 1384 46.05            -        (1155,439)l      (1155,439)l     0.39       1.6    0.0       1.6    0.0
+ 1385 46.09            -        (1153,439)l      (1153,439)l     0.39       1.5    0.2       1.5    0.2
+ 1386 46.12            -        (1141,445)l      (1141,445)l     0.34       1.3    0.7       1.3    0.7
+ 1387 46.15            -        (1150,440)l      (1150,440)l     0.36       1.0    0.7       1.0    0.7
+ 1388 46.19            -        (1156,439)l      (1156,439)l     0.36       1.5    1.5       1.0    1.0
+ 1389 46.22   (1166,437)        (1163,441)l      (1163,441)l     0.36       1.4    1.6       0.9    1.1
+ 1390 46.25   (1173,442)        (1172,442)l      (1172,442)l     0.36       1.5    1.9       0.8    1.2
+ 1391 46.29   (1177,446)        (1179,447)l      (1179,447)l     0.38       1.4    2.0       1.0    1.6
+ 1392 46.32   (1188,453)        (1215,471)l      (1195,465)l     0.36       0.8    0.9       0.3    1.3
+ 1393 46.35   (1195,460)        (1223,482)l      (1203,473)l     0.41       1.5    0.4       0.7    1.4 <- contatto vero
+ 1394 46.39   (1206,476)        (1232,501)l      (1215,474)l     0.35       2.7    0.8       1.4    1.8
+ 1395 46.42   (1211,487)        (1236,513)l      (1238,486)l     0.34       3.6    1.7       1.8    1.3
+ 1396 46.45   (1222,502)        (1236,507)l      (1236,507)l     0.36       3.1    2.1       1.5    1.2
+ 1397 46.49   (1222,495)        (1223,500)l      (1227,531)l     0.36       2.8    2.4       4.7    3.3
+ 1398 46.52   (1215,465)        (1215,470)l      (1223,554)l     0.48       1.3    2.1       5.8    4.0
+ 1399 46.55   (1206,437)        (1208,443)l      (1218,542)l     0.58       0.2    1.8       5.3    4.1
+ 1400 46.59   (1200,416)        (1202,420)l                -     0.59       0.6    1.6                 
+ 1401 46.62   (1192,393)        (1196,399)l      (1192,393)t     0.66       1.1    1.4       2.1    1.2
+ 1402 46.65   (1188,375)        (1190,382)l      (1190,382)l     0.67       1.0    1.2       2.9    1.2
+ 1403 46.69   (1185,360)        (1184,366)l      (1184,366)l     0.73       0.9    1.0       3.1    1.0
+ 1404 46.72   (1177,348)        (1181,354)l      (1181,354)l     0.79       0.8    0.9       0.5    0.9
+ 1405 46.75   (1173,337)        (1174,343)l      (1174,343)l     0.71       0.7    0.7       0.6    0.7
+ 1406 46.79   (1170,330)        (1170,335)l      (1170,335)l     0.76       0.7    0.5       0.7    0.5
+ 1407 46.82   (1162,322)        (1165,328)l      (1165,328)l     0.80       0.6    0.4       0.6    0.4
+ 1408 46.85   (1158,318)        (1161,323)l      (1161,323)l     0.82       0.6    0.3       0.6    0.3
+cambio di direzione [normale]: massimo vicino al polso al frame 1395: 3.6 h/s (soglia 2.5), dopo 1.7 (soglia 2.4), polso 0.34 h -> velocita' dopo 1.7 < 2.4
+cambio di direzione [estesa]: massimo vicino al polso al frame 1398: 5.8 h/s (soglia 2.5), dopo 4.0 (soglia 2.4), polso 0.37 h -> SUPERA le soglie
+calcolo [normale] al contatto 1373 (servizio): errore 11.1 px a 1080p, velocita' 157 km/h, angolo +6.4, 10 punti -> la traiettoria non spiega i punti (errore 11.1 px a 1080p, massimo 6)
+calcolo [estesa] al contatto 1373 (servizio): errore 11.1 px a 1080p, velocita' 157 km/h, angolo +6.4, 10 punti -> la traiettoria non spiega i punti (errore 11.1 px a 1080p, massimo 6)
+calcolo [estesa] al contatto 1398 (dritto): errore 6.0 px a 1080p, velocita' 328 km/h, angolo +4.4, 9 punti -> la traiettoria non spiega i punti (errore 6.0 px a 1080p, massimo 6); velocita' 328 km/h fuori da 30-250
+velocita_rimbalzo (passi 1-3; questo file usa tutti i punti di TrackNet, palline ferme comprese):
+  [tutti i punti] passo 1: nessun rimbalzo TrackNet nel campo avversario tra 1348 e 1421
+  [senza ferme, solo diagnosi] passo 1: nessun rimbalzo TrackNet nel campo avversario tra 1348 e 1421
+passo 4 (colore): 8 punti aggiunti dal colore; rimbalzo non trovato
+passo 5 (ricostruito): nessun buco 4-20 frame con discesa prima e risalita dopo
+passo 6: NON eseguito (la riga non ha direzione). Solo diagnosi, cercato dopo il contatto vero: non trovato
+==============================================================================================================
+ROVESCIO 18,4 S   riga del CSV al frame 547 (18.18 s), contatto vero ~frame 552 (18.35 s)
+nota finale: media fino al rimbalzo 62 km/h (volo 1.45 s), piu' della velocita' d'uscita: non mostrata (la pallina in volo rallenta, una delle due misure e' sbagliata)
+colpo rovescio, usc 62, rimb -, media -, direzione dal centro verso destra, errore 0.4 px, rimbalzo passo 6: 591 (tracknet) (7.98; 24.48) m
+finestra della posa: 518-578 (17.22-19.21 s, 61 frame); con il margine 508-588; contatto vero DENTRO dalla finestra
+classi in tutta la finestra: {'rovescio': 54, 'dritto': 7}
+voti nei 15 frame prima (riga 547): {'rovescio': 16}  -> [('rovescio', 16)]
+   sequenza: rov rov rov rov rov rov rov rov rov rov rov rov rov rov rov rov
+voti nei 15 frame prima (contatto vero 552): {'rovescio': 12, 'dritto': 4}  -> [('rovescio', 12)]
+   sequenza: rov rov rov rov rov rov rov rov rov rov rov rov dri dri dri dri
+TrackNet nella finestra: 81 punti, 51 tolti come palline ferme (frame 508-588)
+   palline ferme tolte entro 15 frame dal contatto vero: 21: 537(510,543), 538(506,543), 539(506,543), 540(506,543), 541(506,543), 542(566,540), 543(566,540), 544(562,540), 545(562,540), 546(562,540), 547(562,540), 548(558,540), 549(558,540), 550(558,540), 551(555,540), 552(555,540), 553(555,540), 555(551,540), 565(540,540), 566(540,540), 567(540,540)
+traccia normale: 60 punti (512-585), contatti [547]
+traccia estesa : 59 punti (512-585), contatti [529]
+frame     s     TrackNet            normale           estesa  polso/h  cambio N dopo N  cambio E dopo E
+  537 17.85    (510,543) F       (635,869)l       (635,869)l     0.54       3.4    1.8       3.4    1.8
+  538 17.88    (506,543) F       (630,834)l       (630,834)l     0.48       2.1    1.6       2.1    1.6
+  539 17.92    (506,543) F       (625,804)l       (625,804)l     0.45       0.9    1.5       0.9    1.5
+  540 17.95    (506,543) F       (619,776)l       (619,776)l     0.40       0.5    1.4       0.5    1.4
+  541 17.98    (506,543) F       (613,751)l       (613,751)l     0.35       0.8    1.2       0.8    1.2
+  542 18.02    (566,540) F       (608,728)l       (608,728)l     0.34       0.8    1.0       0.8    1.0
+  543 18.05    (566,540) F       (604,710)l       (604,710)l     0.31       0.8    0.8       0.8    0.8
+  544 18.08    (562,540) F       (598,694)l       (598,694)l     0.30       0.5    1.1       0.5    1.1
+  545 18.12    (562,540) F       (593,681)l       (593,681)l     0.29       0.5    1.1       0.5    1.1
+  546 18.15    (562,540) F       (587,670)l       (587,670)l     0.27       0.9    1.4       0.9    1.4
+  547 18.18    (562,540) F       (582,663)l       (582,663)l     0.25       3.9    4.2       3.9    4.2 <- riga
+  548 18.22    (558,540) F       (601,629)l       (601,629)l     0.23       3.6    4.5       3.6    4.5
+  549 18.25    (558,540) F                -                -      nan                                  
+  550 18.28    (558,540) F                -                -      nan                                  
+  551 18.32    (555,540) F       (732,459)l       (732,459)l     0.19       1.6    2.6       1.6    2.6
+  552 18.35    (555,540) F       (765,423)l       (765,423)l     0.46       2.1    2.3       2.1    2.3 <- contatto vero
+  553 18.38    (555,540) F       (795,392)l       (795,392)l     0.30       1.1    1.9       1.1    1.9
+  554 18.41    (821,360)         (821,367)l       (821,367)l     0.34       1.2    1.6       1.2    1.6
+  555 18.45    (551,540) F       (844,345)l       (844,345)l     0.39       1.2    1.4       1.2    1.4
+  556 18.48    (866,322)         (865,328)l       (865,328)l     0.44       1.1    1.2       1.1    1.2
+  557 18.51    (885,311)         (883,315)l       (883,315)l     0.50       0.9    1.0       0.9    1.0
+  558 18.55    (900,300)         (901,304)l       (901,304)l     0.53       0.8    0.9       0.8    0.9
+  559 18.58    (918,292)         (917,296)l       (917,296)l     0.55       0.7    0.8       0.7    0.8
+  560 18.61    (933,285)         (931,291)l       (931,291)l     0.56       0.6    0.7       0.6    0.7
+  561 18.65    (945,285)         (944,287)l       (944,287)l     0.59       0.5    0.7       0.5    0.7
+  562 18.68    (956,281)         (956,285)l       (956,285)l     0.60       0.5    0.6       0.5    0.6
+  563 18.71    (967,281)         (967,284)l       (967,284)l     0.60       0.4    0.6       0.4    0.6
+  564 18.75    (977,285)         (978,285)l       (978,285)l     0.60       0.4    0.6       0.4    0.6
+  565 18.78    (540,540) F                -                -      nan                                  
+  566 18.81    (540,540) F       (997,291)l       (997,291)l     0.61       0.3    0.6       0.3    0.6
+  567 18.85    (540,540) F      (1005,295)l      (1005,295)l     0.61       0.3    0.6       0.3    0.6
+cambio di direzione [normale]: massimo vicino al polso al frame 547: 3.9 h/s (soglia 2.5), dopo 4.2 (soglia 2.4), polso 0.25 h -> SUPERA le soglie
+cambio di direzione [estesa]: massimo vicino al polso al frame 547: 3.9 h/s (soglia 2.5), dopo 4.2 (soglia 2.4), polso 0.25 h -> SUPERA le soglie
+calcolo [normale] al contatto 547 (rovescio): errore 0.4 px a 1080p, velocita' 62 km/h, angolo +9.0, 8 punti -> accettato
+calcolo [estesa] al contatto 529 (rovescio): errore 23.2 px a 1080p, velocita' 324 km/h, angolo -11.9, 9 punti -> la traiettoria non spiega i punti (errore 23.2 px a 1080p, massimo 6); velocita' 324 km/h fuori da 30-250
+velocita_rimbalzo (passi 1-3; questo file usa tutti i punti di TrackNet, palline ferme comprese):
+  [tutti i punti] passo 1: rimbalzo al frame 591 (19.65 s) pixel (1117,562) -> a terra (8.0; 24.5) m
+  [tutti i punti] passo 2: inizio_traiettoria risale dal 591 e si ferma al 591 (19.65 s), limite 548 (contatto trovato: non prima del frame dopo la riga)
+           perche': salto troppo grande tra 590 (521, 540) e 591 (1117, 562): 596 px/frame > 146
+           -> SCARTATO: il 591 e' a 44 frame dalla riga 547 (max 25)
+  [senza ferme, solo diagnosi] passo 1: rimbalzo al frame 591 (19.65 s) pixel (1117,562) -> a terra (8.0; 24.5) m
+  [senza ferme, solo diagnosi] passo 2: inizio_traiettoria risale dal 591 e si ferma al 591 (19.65 s), limite 548 (contatto trovato: non prima del frame dopo la riga)
+           perche': salto troppo grande tra 590 (521, 540) e 591 (1117, 562): 596 px/frame > 146
+           -> SCARTATO: il 591 e' a 44 frame dalla riga 547 (max 25)
+passo 4 (colore): 0 punti aggiunti dal colore; rimbalzo non trovato
+passo 5 (ricostruito): non provato (riga 'contatto non visibile' senza tratto coperto)
+passo 6 (punto del rimbalzo per la mappa): frame 591 (19.65 s), (8.0; 24.5) m, tracknet
+==============================================================================================================
+DRITTO 39,8 S   riga del CSV al frame 1191 (39.63 s), contatto vero ~frame 1196 (39.79 s)
+nota finale: pallina mossa al colpo: solo direzione (velocita' non affidabile)
+colpo dritto, usc -, rimb -, media -, direzione dal centro verso destra, errore 0.9 px, rimbalzo passo 6: 1218 (tracknet) (7.69; 21.42) m
+finestra della posa: 1154-1232 (38.39-40.99 s, 79 frame); con il margine 1144-1242; contatto vero DENTRO dalla finestra
+classi in tutta la finestra: {'dritto': 49, 'rovescio': 14, 'servizio': 4}
+voti nei 15 frame prima (riga 1191): {'dritto': 11, 'servizio': 4, 'attesa': 1}  -> [('dritto', 11)]
+   sequenza: dri dri dri dri dri ser ser dri dri ser att ser dri dri dri dri
+voti nei 15 frame prima (contatto vero 1196): {'dritto': 11, 'servizio': 4, 'attesa': 1}  -> [('dritto', 11)]
+   sequenza: ser ser dri dri ser att ser dri dri dri dri dri dri dri dri dri
+TrackNet nella finestra: 85 punti, 10 tolti come palline ferme (frame 1183-1232)
+   palline ferme tolte entro 15 frame dal contatto vero: 5: 1183(701,551), 1184(720,540), 1185(716,540), 1186(716,540), 1188(697,551)
+traccia normale: 37 punti (1144-1233), contatti []
+traccia estesa : 74 punti (1144-1242), contatti [1191]
+frame     s     TrackNet            normale           estesa  polso/h  cambio N dopo N  cambio E dopo E
+ 1181 39.29    (720,521)         (720,521)t      (1127,675)l     0.18      pochi punti       0.7    0.4
+ 1182 39.33    (720,525)         (720,525)t      (1127,665)l     0.22      pochi punti       0.7    0.3
+ 1183 39.36    (701,551) F                -      (1127,657)l     0.28                        0.8    0.1
+ 1184 39.39    (720,540) F                -      (1127,653)l     0.32                        0.8    0.1
+ 1185 39.43    (716,540) F                -      (1128,650)l     0.33                        0.8    0.3
+ 1186 39.46    (716,540) F                -      (1128,651)l     0.32                        0.7    0.5
+ 1187 39.49    (716,532)         (716,532)t      (1128,654)l     0.29      pochi punti       0.7    0.7
+ 1188 39.53    (697,551) F                -      (1128,660)l     0.24                        0.0    0.1
+ 1189 39.56    (711,528)         (711,528)t      (1129,667)l     0.34       0.1    0.1       1.2    0.9
+ 1190 39.59    (711,525)         (711,525)t      (1129,678)l     0.32       0.2    0.1       2.2    1.7
+ 1191 39.63    (708,525)         (708,525)t      (1129,691)l     0.25      pochi punti       3.1    2.5 <- riga
+ 1192 39.66    (708,525)         (708,525)t      (1128,664)l     0.36       0.1    0.1       2.5    2.4
+ 1193 39.69   (1125,607)                  -      (1127,616)l     0.29                        1.0    1.9
+ 1194 39.73   (1125,570)                  -      (1127,577)l     0.45                        0.3    1.4
+ 1195 39.76   (1121,540)                  -      (1125,547)l     0.44                        1.3    1.1
+ 1196 39.79    (705,525)         (705,525)t      (1122,523)l     0.42      pochi punti       1.6    0.8 <- contatto vero
+ 1197 39.83    (705,525)         (705,525)t      (1122,505)l     0.49      pochi punti       1.3    0.5
+ 1198 39.86   (1121,487)                  -      (1123,493)l     0.52                        1.0    0.4
+ 1199 39.89   (1121,476)                  -      (1123,483)l     0.51                        0.9    0.2
+ 1200 39.93   (1117,472)                  -      (1121,476)l     0.52                        0.7    0.1
+ 1201 39.96   (1117,468)                  -      (1122,472)l     0.53                        0.6    0.1
+ 1202 39.99   (1117,465)                  -      (1120,470)l     0.52                        0.5    0.1
+ 1203 40.03   (1117,465)                  -      (1120,470)l     0.53                        0.4    0.2
+ 1204 40.06    (693,536)         (693,536)t      (1119,470)l     0.52      pochi punti       0.4    0.3
+ 1205 40.09    (693,532)         (693,532)t      (1117,473)l     0.53      pochi punti       0.3    0.4
+ 1206 40.13    (693,532)         (693,532)t                -      nan      pochi punti                 
+ 1207 40.16    (693,532)         (693,532)t      (1118,482)l     0.55      pochi punti       0.3    0.5
+ 1208 40.19   (1113,483)                  -      (1118,488)l     0.54                        0.2    0.5
+ 1209 40.23   (1113,491)                  -      (1115,493)l     0.53                        0.2    0.6
+ 1210 40.26   (1113,498)                  -      (1114,500)l     0.54                        0.2    0.6
+ 1211 40.29   (1110,506)                  -      (1114,508)l     0.47                        0.2    0.6
+cambio di direzione [normale]: massimo vicino al polso al frame 1190: 0.2 h/s (soglia 2.5), dopo 0.1 (soglia 2.4), polso 0.32 h -> cambio 0.2 < 2.5; velocita' dopo 0.1 < 2.4
+cambio di direzione [estesa]: massimo vicino al polso al frame 1191: 3.1 h/s (soglia 2.5), dopo 2.5 (soglia 2.4), polso 0.25 h -> SUPERA le soglie
+calcolo [estesa] al contatto 1191 (dritto): errore 0.9 px a 1080p, velocita' 88 km/h, angolo +3.3, 10 punti -> accettato  (in solo_direzione la velocita' NON si mostra)
+velocita_rimbalzo (passi 1-3; questo file usa tutti i punti di TrackNet, palline ferme comprese):
+  [tutti i punti] passo 1: rimbalzo al frame 1193 (39.69 s) pixel (1125,607) -> a terra (7.5; 14.9) m
+  [tutti i punti] passo 2: inizio_traiettoria risale dal 1193 e si ferma al 1193 (39.69 s), limite 1192 (contatto trovato: non prima del frame dopo la riga)
+           perche': salto troppo grande tra 1192 (708, 525) e 1193 (1125, 607): 425 px/frame > 130
+           -> SCARTATO: la traiettoria non ha punti prima del rimbalzo (inizio 1193 = rimbalzo 1193)
+  [senza ferme, solo diagnosi] passo 1: rimbalzo al frame 1193 (39.69 s) pixel (1125,607) -> a terra (7.5; 14.9) m
+  [senza ferme, solo diagnosi] passo 2: inizio_traiettoria risale dal 1193 e si ferma al 1193 (39.69 s), limite 1192 (contatto trovato: non prima del frame dopo la riga)
+           perche': salto troppo grande tra 1192 (708, 525) e 1193 (1125, 607): 425 px/frame > 130
+           -> SCARTATO: la traiettoria non ha punti prima del rimbalzo (inizio 1193 = rimbalzo 1193)
+passo 4 (colore): 0 punti aggiunti dal colore; rimbalzo non trovato
+passo 5 (ricostruito): nessun buco 4-20 frame con discesa prima e risalita dopo
+passo 6 (punto del rimbalzo per la mappa): frame 1218 (40.53 s), (7.7; 21.4) m, tracknet
+==============================================================================================================
+ROVESCIO 49,7 S   riga del CSV al frame 1493 (49.68 s), contatto vero ~frame 1492 (49.65 s)
+nota finale: pallina mossa al colpo: solo direzione (velocita' non affidabile)
+colpo rovescio, usc -, rimb -, media -, direzione dal centro verso sinistra, errore 2.7 px, rimbalzo passo 6: - (-) (-; -) m
+finestra della posa: 1447-1559 (48.15-51.88 s, 113 frame); con il margine 1437-1569; contatto vero DENTRO dalla finestra
+classi in tutta la finestra: {'rovescio': 55, 'dritto': 36, 'servizio': 8}
+voti nei 15 frame prima (riga 1493): {'rovescio': 14, 'servizio': 2}  -> [('rovescio', 14)]
+   sequenza: rov rov ser rov ser rov rov rov rov rov rov rov rov rov rov rov
+voti nei 15 frame prima (contatto vero 1492): {'rovescio': 14, 'servizio': 2}  -> [('rovescio', 14)]
+   sequenza: rov rov rov ser rov ser rov rov rov rov rov rov rov rov rov rov
+TrackNet nella finestra: 86 punti, 4 tolti come palline ferme (frame 1490-1566)
+   palline ferme tolte entro 15 frame dal contatto vero: 3: 1490(1117,540), 1491(1117,551), 1492(1121,555)
+traccia normale: 47 punti (1447-1493), contatti []
+traccia estesa : 84 punti (1447-1531), contatti [1493]
+frame     s     TrackNet            normale           estesa  polso/h  cambio N dopo N  cambio E dopo E
+ 1477 49.15    (757,630)         (761,640)l       (761,640)l     0.38       0.7    1.0       0.7    1.0
+ 1478 49.18   (1110,525)         (757,628)l       (757,628)l     0.40       0.6    0.8       0.6    0.8
+ 1479 49.22    (750,611)         (753,616)l       (753,616)l     0.41       0.8    0.6       0.8    0.6
+ 1480 49.25   (1110,517)         (749,608)l       (749,608)l     0.34       0.8    0.5       0.8    0.5
+ 1481 49.28    (742,596)         (745,601)l       (745,601)l     0.27       0.7    0.4       0.7    0.4
+ 1482 49.32    (738,592)         (741,597)l       (741,597)l     0.29       0.8    0.3       0.8    0.3
+ 1483 49.35   (1113,517)         (737,595)l       (737,595)l     0.42       0.8    0.4       0.8    0.4
+ 1484 49.38   (1113,517)         (733,594)l       (733,594)l     0.30       0.7    0.5       0.7    0.5
+ 1485 49.42    (727,592)         (729,595)l       (729,595)l     0.28       0.8    0.7       0.8    0.7
+ 1486 49.45   (1113,521)         (726,599)l       (726,599)l     0.25       0.7    0.9       0.7    0.9
+ 1487 49.48   (1117,525)         (722,604)l       (722,604)l     0.21       0.8    1.1       0.8    1.1
+ 1488 49.52   (1117,528)         (718,611)l       (718,611)l     0.16       0.9    1.4       0.9    1.4
+ 1489 49.55    (711,618)         (714,620)l       (714,620)l     0.14       0.7    1.4       0.7    1.4
+ 1490 49.58   (1117,540) F       (712,630)l       (712,630)l     0.15       0.7    1.5       0.7    1.5
+ 1491 49.62   (1117,551) F       (706,645)l       (706,645)l     0.16       0.5    1.5       2.5    1.4
+ 1492 49.65   (1121,555) F       (702,663)l       (702,663)l     0.23      pochi punti       3.9    2.5 <- contatto vero
+ 1493 49.68   (1117,562)         (703,674)l       (703,674)l     0.30      pochi punti       5.0    3.5 <- riga
+ 1494 49.72    (708,625)                  -                -      nan                                  
+ 1495 49.75    (716,592)                  -       (716,592)t     0.31                        1.4    2.8
+ 1496 49.78    (723,562)                  -       (726,568)l     0.30                        0.2    2.6
+ 1497 49.82    (731,532)                  -       (731,539)l     0.35                        1.4    2.2
+ 1498 49.85    (735,510)                  -       (737,514)l     0.38                        0.9    1.8
+ 1499 49.88    (742,487)                  -       (742,487)t     0.45                        1.3    1.4
+ 1500 49.92    (746,468)                  -       (746,468)t     0.52                        1.4    1.2
+ 1501 49.95    (750,453)                  -       (754,458)l     0.52                        1.0    1.2
+ 1502 49.98    (757,442)                  -       (758,445)l     0.49                        0.9    0.9
+ 1503 50.02    (761,427)                  -       (762,434)l     0.53                        0.6    0.8
+ 1504 50.05    (765,420)                  -       (766,424)l     0.57                        0.6    0.6
+ 1505 50.08    (768,411)                  -       (769,416)l     0.58                        0.7    0.5
+ 1506 50.12    (772,405)                  -       (772,411)l     0.58                        0.6    0.4
+ 1507 50.15    (776,405)                  -       (775,406)l     0.59                        0.6    0.3
+cambio di direzione [normale]: massimo vicino al polso al frame 1488: 0.9 h/s (soglia 2.5), dopo 1.4 (soglia 2.4), polso 0.16 h -> cambio 0.9 < 2.5; velocita' dopo 1.4 < 2.4
+cambio di direzione [estesa]: massimo vicino al polso al frame 1493: 5.0 h/s (soglia 2.5), dopo 3.5 (soglia 2.4), polso 0.30 h -> SUPERA le soglie
+calcolo [estesa] al contatto 1493 (rovescio): errore 2.7 px a 1080p, velocita' 53 km/h, angolo -2.1, 9 punti -> accettato  (in solo_direzione la velocita' NON si mostra)
+velocita_rimbalzo (passi 1-3; questo file usa tutti i punti di TrackNet, palline ferme comprese):
+  [tutti i punti] passo 1: rimbalzo al frame 1485 (49.42 s) pixel (727,592) -> a terra (2.6; 16.7) m
+  [tutti i punti] passo 2: inizio_traiettoria risale dal 1485 e si ferma al 1485 (49.42 s), limite 1494 (contatto trovato: non prima del frame dopo la riga)
+           perche': nessun punto prima entro il limite (limite 1494, buco max 6)
+           -> SCARTATO: la traiettoria non ha punti prima del rimbalzo (inizio 1485 = rimbalzo 1485)
+  [senza ferme, solo diagnosi] passo 1: rimbalzo al frame 1485 (49.42 s) pixel (727,592) -> a terra (2.6; 16.7) m
+  [senza ferme, solo diagnosi] passo 2: inizio_traiettoria risale dal 1485 e si ferma al 1485 (49.42 s), limite 1494 (contatto trovato: non prima del frame dopo la riga)
+           perche': nessun punto prima entro il limite (limite 1494, buco max 6)
+           -> SCARTATO: la traiettoria non ha punti prima del rimbalzo (inizio 1485 = rimbalzo 1485)
+passo 4 (colore): 12 punti aggiunti dal colore; rimbalzo al frame 1485 (2.6; 16.7) m
+   inizio_traiettoria sulla traccia col colore: 1485; nessun punto prima entro il limite (limite 1494, buco max 6)
+passo 5 (ricostruito): nessun buco 4-20 frame con discesa prima e risalita dopo
+passo 6 (punto del rimbalzo per la mappa): non trovato

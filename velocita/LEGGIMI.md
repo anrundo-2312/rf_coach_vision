@@ -48,7 +48,8 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
   dal rimbalzo nel campo avversario, quando si vede. Va in una colonna a
   parte e sul video compare come "circa ... km/h (dal rimbalzo)". Per tutti
   gli altri colpi con una direzione cerca solo il punto del rimbalzo, per la
-  mappa.
+  mappa; se il primo rimbalzo non si vede, riconosce la palla corta dalla
+  serie dei rimbalzi dopo (6 ottobre).
 - `disegna_velocita.py` - riscrive il video con colpo, km/h (e sotto, in
   piccolo, la velocita' media del volo), direzione e una piccola mappa del
   campo, con il punto in cui la pallina rimbalza; in alto a destra il
@@ -421,7 +422,8 @@ cima a `velocita_rimbalzo.py` lo spegne.
 
 Il rimbalzo trovato (passi 1-6) e' nelle colonne `rimbalzo_trovato_x_m`,
 `rimbalzo_trovato_y_m`, `rimbalzo_trovato_frame` e `rimbalzo_trovato_come`
-(tracknet, colore, ricostruito). `rimbalzo_x_m` e `rimbalzo_y_m` restano
+(tracknet, colore, ricostruito; serie per la palla corta dalla serie di
+rimbalzi, vedi sotto). `rimbalzo_x_m` e `rimbalzo_y_m` restano
 quelle del servizio, usate per la fascia.
 
 Sulla mappa del video: pallino giallo bordato di nero = rimbalzo visto
@@ -513,6 +515,132 @@ le velocita' stimate dal rimbalzo scendono di 2-4 km/h e le medie del volo di
 Giorgio a 60,2 s passa da "centrale" a "incrociato" (angolo da -15,0 a -15,2
 gradi, proprio sul confine; i punti in volo dicevano gia' incrociato).
 `RIMBALZO_SUL_RAGGIO = False` in cima a `velocita_rimbalzo.py` torna a prima.
+
+### Palla corta dalla serie di rimbalzi (6 ottobre)
+
+Idea dell'utente: se il primo rimbalzo di una palla corta non si vede (coperto
+dalla rete, perso da TrackNet), si guardano il secondo, il terzo e il quarto.
+Una smorzata rimbalza 2-3 volte prima della riga del servizio, sempre piu'
+bassa e in avanti; un rimbalzo falso (TrackNet che salta da una pallina ferma
+a quella vera) e' isolato e non fa una serie.
+
+**La regola** (passo 6b di `velocita_rimbalzo.py`, solo dritti e rovesci,
+solo se il passo 6 non trova il primo rimbalzo): palla corta se si vedono
+almeno 2 rimbalzi della **stessa pallina** e il primo visto cade prima della
+riga del servizio. Stessa pallina vuol dire: traiettoria continua tra un
+rimbalzo e l'altro (buchi di TrackNet di al massimo 3 frame, niente salti di
+piu' di 40 px per frame a 1080p), volo piu' corto e risalita piu' piccola ogni
+volta, in avanti (al massimo 0,5 m indietro), meno di 2 m di lato e meno di 4 m
+tra uno e l'altro, al massimo 1,2 s di volo. "Palla corta" qui vuol dire che la
+pallina muore davanti alla riga del servizio: un po' piu' largo della fascia
+"palla corta" (entro 3 m dalla rete), perche' il primo rimbalzo, quello vicino
+alla rete, non si e' visto.
+
+**Quando finisce un colpo** (deciso con l'utente, macchina a stati
+COLPO -> VOLO -> RIMBALZO -> COLPO DOPO): la serie deve cominciare entro 2,5 s
+dal contatto (`CORTA_INIZIO_MAX_S`) e si segue fino al primo evento dopo il
+contatto: il contatto del colpo dopo (qualsiasi riga, anche un servizio)
+oppure, se quel colpo non ha una riga, il picco del polso dello swing dopo
+visto dalla posa (`<video>_colpi.csv`). Non l'inizio dello swing: la posa vede
+la preparazione gia' 1-2 s dopo il colpo prima, e avrebbe tagliato anche
+rimbalzi veri (Giorgio, dritto a 8,7 s: rimbalzo a 1,4 s dal colpo). Dopo la
+fine nessun rimbalzo e' piu' di quel colpo, quindi nel cesto la pallina del
+colpo dopo non diventa la serie di quello prima; ogni rimbalzo vale per un
+solo colpo. 6 s (`CORTA_SICUREZZA_S`) e' solo un limite di sicurezza: a quel
+punto la pallina rotola. Una finestra fissa non andava: con 4 s, una palla
+corta tirata 1,8-2,2 s dopo un colpo profondo veniva data al colpo prima (10
+volte su 10 nella simulazione); con 2,5 s la regola non scattava mai, perche'
+il terzo rimbalzo arriva circa 2,8-3 s dopo il colpo.
+
+**Nel CSV**: `rimbalzo_trovato_come` = serie, il punto e' il primo rimbalzo
+VISTO (di solito il secondo vero, non l'arrivo), `profondita` = palla corta,
+niente `dentro_fuori` (il primo rimbalzo non si e' visto, quindi dentro o
+fuori non si sa) e niente velocita' media; la nota dice i frame della serie.
+Nuova colonna `rimbalzi_prima_servizio`: quanti rimbalzi (visti) fa la pallina
+prima della riga del servizio, per i dritti e rovesci con il primo rimbalzo di
+TrackNet prima della riga e per le righe "serie": piu' sono, piu' la smorzata
+"muore". Sul video, sotto la direzione, "palla corta (1o rimbalzo non visto)";
+nel riepilogo e nella scheda conta tra le palle corte (esito "non visto").
+
+**Prove.** Nessuno degli 8 video di prova ha una smorzata vera, quindi la
+regola e' provata solo su traiettorie simulate (camera di Giorgio, 30 fps,
+punti sulla griglia di TrackNet, un frame su dieci perso, primo rimbalzo
+nascosto): smorzata lasciata morire riconosciuta 9-10 volte su 10, anche con il
+colpo dopo a 3,5 s; palla profonda, palla corta-media e smorzata lunga (secondo
+rimbalzo oltre la riga del servizio) mai; TrackNet che salta tra palline ferme
+vicino alla rete e la pallina vera mai; palla profonda seguita da una palla
+corta 1,8-2,2 s dopo: mai data al colpo prima. Il quarto rimbalzo (circa 5 cm,
+4-5 px) a 30 fps quasi non si vede. Sugli 8 video la regola entra in 6 colpi e
+non trova nessuna serie: nessuna palla corta inventata, tutto il resto
+identico; `rimbalzi_prima_servizio` compare in 2 colpi (Giorgio 8,7 s e
+video_alcaraz_palline_sparse 0,8 s), con valore 1 (vedi COME_FUNZIONA 8.19).
+
+**Limiti.** A ritmo di cesto (un colpo ogni 2,5 s circa) una smorzata con il
+primo rimbalzo nascosto non si riconosce: quando arriva la pallina nuova
+TrackNet segue quella, e il terzo rimbalzo della prima non si vede. E' una
+palla corta persa, non inventata: per vederla serve il primo rimbalzo (telefono
+piu' in alto). Se il colpo dopo non lo vede ne' la posa ne' il calcolo, la sua
+pallina puo' ancora finire nella serie del colpo prima. Da verificare con un
+video apposta: 5-6 smorzate lasciate rimbalzare, meglio a 60 fps.
+
+### Il rimbalzo cercato sulla pallina del colpo (8 ottobre)
+
+Controllando a occhio, punto per punto, a quale pallina appartengono i punti
+scritti dal programma (`Claude outputs/validazione_identita_pallina.pdf`,
+7 video): su 38 righe con punti 37 sono giuste; su 30 rimbalzi 28. Gli errori
+vengono tutti dal fatto che `velocita_rimbalzo.py` cercava il rimbalzo su tutti
+i punti di TrackNet attorno al colpo, e un punto di un'altra pallina (ferma
+alla rete, dell'avversario) puo' passare i controlli.
+
+Ora, per ogni colpo che ha i punti della pallina colpita (`_punti`, scritti
+da `velocita_uscita.py` o `direzione_nascosta.py`), il rimbalzo si cerca SOLO
+sulla traccia coerente di TrackNet che contiene quei punti (le tracce sono
+le stesse della pallina in uscita, vedi sotto: salti di al massimo 0,08
+altezze dell'immagine per fotogramma, buchi fino a 0,75 s). I punti di altre
+palline non entrano in nessun passo. Senza `_punti`, o se nessuna traccia li
+contiene, tutto come prima (`TRACCIA_DEL_COLPO = False` spegne la regola).
+Due controlli in piu':
+- nel colore (passo 4) una macchia fuori dalla strada prevista che c'era gia'
+  nello stesso punto 0,4 s prima e' una pallina ferma e si scarta
+  (`COLORE_FERME`): la maschera del giallo fermo non vede le palline attraverso
+  le maglie della rete;
+- il rimbalzo ricostruito (passo 5) vale solo se dopo il buco la pallina va
+  almeno 0,3 volte la velocita' di prima (`RIC_VELOCITA_MIN`): dopo un
+  rimbalzo la velocita' resta simile, dopo un colpo dell'avversario no.
+
+Sui 7 video cambiano 3 righe, tutte nel verso giusto (controllate a occhio):
+Giorgio 39,7 s, i punti scritti sono solo della pallina colpita (104 -> 108
+km/h); Giorgio 14,0 s, il rimbalzo passa dal frame 451 al 452, il punto piu'
+basso in cui la pallina si vede, e arriva una stima di 84 km/h;
+video_alcaraz_palline_sparse 13,3 s, il rimbalzo sulla pallina ferma (139
+km/h) sparisce e la riga resta "solo direzione". Tutto il resto identico.
+Costo: il passo del rimbalzo dura il 40% in piu' (circa il 6% sulla catena
+completa). Vedi COME_FUNZIONA 8.20.
+
+### Il punto del rimbalzo nel buco di TrackNet (8 ottobre)
+
+Se la pallina sparisce dietro la rete o il nastro proprio mentre tocca terra,
+TrackNet ha un buco al rimbalzo e il punto piu' basso che vede e' l'ultimo
+prima del buco (o il primo dopo), con la pallina ancora in aria. Portato a
+terra dalla camera dietro il giocatore, un punto in aria cade piu' lungo del
+vero: Giorgio 60,2 s, 25,2 m e "fuori", mentre a occhio rimbalza dentro.
+
+Ora (passo 6c, `PUNTO_NEL_BUCO`), se il rimbalzo visto da TrackNet sta accanto
+a un buco di piu' di 0,067 s (2 frame a 30 fps, 4 a 60), il punto si
+ricostruisce come al passo 5: curva della discesa sui punti prima del buco,
+curva della risalita su quelli dopo, il rimbalzo e' dove si incontrano. Il
+punto ricostruito vale per la mappa, dentro/fuori e profondita'
+(`rimbalzo_trovato_come` = ricostruito, cerchio vuoto sul video; la nota dice
+tra quali frame TrackNet ha perso la pallina). Velocita', media del volo e
+direzione restano come prima.
+
+Sui 7 video cambiano 5 rimbalzi, esattamente quelli accanto a un buco, tutti
+piu' corti di 2-5 m: Giorgio 60,2 s (25,2 -> 20,2 m, da fuori a dentro),
+alcaraz 14,4 s, palline_sparse 3,0, 18,3 e 23,1 s. Guardati fotogramma per
+fotogramma (`Claude outputs/prova_AP_e_B_rimbalzo.pdf`): in tutti e 5 la
+pallina tocca terra dentro il buco e il punto vecchio era in aria. Di quanto
+il punto nuovo sia giusto non si sa (nessuna verita' a terra): a quella
+distanza qualche pixel vale 2-3 m. Vedi COME_FUNZIONA 8.21.
 
 ### Velocita' media del volo (2 ottobre)
 
@@ -628,7 +756,8 @@ ottobre). I video piu' larghi di 1920 si rimpiccioliscono come prima.
 
 Per ogni tipo di colpo e per il totale: colpi, dentro, fuori (lunghe,
 larghe), esito non visto, percentuale dentro, percentuale di errori,
-profondita' dei colpi dentro (profonde, medie, corte, palle corte; non nel servizio),
+profondita' dei colpi dentro (profonde, medie, corte, palle corte; non nel servizio;
+le palle corte anche dalla serie di rimbalzi, con esito non visto),
 direzioni, velocita' d'uscita media e massima, media del volo, dritti
 inside-out e inside-in (quanti e quanti dentro). Nel CSV
 `<video>_riepilogo.csv` una riga per tipo piu' il totale; nel JSON anche la
@@ -1041,7 +1170,9 @@ su altri.
   contatto non si riconosce (serve che dopo vada ad almeno 2,4 altezze del
   giocatore al secondo) e, anche abbassando la soglia, il calcolo 3D da' 10-20
   km/h e angoli impossibili: provato il 5 ottobre su tutti i video di prova,
-  nessun colpo recuperato (Giorgio, palla corta a 46,5 s).
+  nessun colpo recuperato (Giorgio, palla corta a 46,5 s). Palla corta dalla
+  serie di rimbalzi (6 ottobre): provata solo su traiettorie simulate; a ritmo
+  di cesto, con il primo rimbalzo nascosto, si perde.
 - Pallina lasciata cadere dal giocatore e colpita (autoalimentazione), vista
   da dietro: la pallina sale nell'immagine sia prima del colpo (dopo il
   rimbalzo) sia dopo, quindi il cambio di direzione al contatto e' piccolo e

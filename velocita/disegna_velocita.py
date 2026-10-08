@@ -29,7 +29,9 @@ Cosa compare per ogni colpo:
     (pallina coperta o mossa al colpo) ma la direzione si';
   - "km/h non disponibile" in grigio: niente di affidabile.
   - sotto la direzione, dove e' caduta la pallina se il rimbalzo e' stato trovato:
-    "dentro" con la fascia (profonda, media, corta, palla corta), "fuori: lunga", "fuori: larga"...
+    "dentro" con la fascia (profonda, media, corta, palla corta), "fuori: lunga", "fuori: larga"...;
+    "palla corta (1o rimbalzo non visto)": la pallina e' morta davanti alla riga del servizio ma il
+    primo rimbalzo non si e' visto (velocita_rimbalzo.py passo 6b): dentro o fuori non si sa;
   La riga dentro/fuori e la media compaiono quando la pallina tocca terra
   (RIVELA_AL_RIMBALZO; il loro posto nell'etichetta c'e' gia' da prima, cosi'
   le righe non si spostano).
@@ -54,7 +56,7 @@ servizio fino al rimbalzo previsto); fascia grigia = centro (terzo centrale
 del singolo); nel servizio il riquadro diviso in tre, con la fascia colpita
 evidenziata. Quando la pallina tocca terra spunta il pallino del rimbalzo,
 con un'onda che si allarga: giallo bordato di nero = rimbalzo visto (TrackNet
-o colore), cerchio giallo vuoto = rimbalzo ricostruito (era coperto), bordo
+o colore; nella palla corta dalla serie di rimbalzi il primo visto), cerchio giallo vuoto = rimbalzo ricostruito (era coperto), bordo
 rosso = fuori; pallino bianco = rimbalzo del servizio previsto dal calcolo,
 quando quello vero non si trova.
 
@@ -142,6 +144,8 @@ def etichetta(fr, righe, colore):
 
 def esito_rimbalzo(c):
     """Riga di testo sul rimbalzo trovato (velocita_rimbalzo.py) o None."""
+    if c.get("rimbalzo_trovato_come") == "serie":      # passo 6b: primo rimbalzo non visto
+        return "palla corta (1o rimbalzo non visto)"
     esito = c.get("dentro_fuori", "")
     if esito == "dentro":
         return "dentro" + (", " + c["profondita"] if c.get("profondita") else "")

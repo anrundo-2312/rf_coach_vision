@@ -26,6 +26,16 @@ Prima di tutto si tolgono i punti di TrackNet su palline ferme in campo, gli
 stessi di velocita_uscita.py (<video>_palline_ferme.csv: finestre dei colpi e
 fino a 1,6 s dopo ogni colpo); se il file manca (risultati vecchi) si usano
 tutti i punti, come prima.
+Poi, per ogni colpo che ha i punti della pallina colpita (_punti scritti da
+velocita_uscita.py o direzione_nascosta.py), il rimbalzo si cerca SOLO sulla
+traccia coerente di TrackNet che contiene quei punti (traccia_del_colpo:
+tracce come in direzione_nascosta.py, salti di al massimo 0,08 altezze
+dell'immagine per fotogramma, buchi fino a 0,75 s; la traccia che contiene
+piu' _punti, stesso fotogramma e posizione entro 0,1 altezze del giocatore).
+I punti di altre palline (ferme alla rete, dell'avversario) non entrano in
+nessun passo, e i _punti scritti con la stima vengono da quella traccia. Senza
+_punti, o se nessuna traccia li contiene, tutti i punti come prima
+(TRACCIA_DEL_COLPO = False per spegnere).
 
 Passi, per ogni colpo senza velocita':
 1. RIMBALZO: nei punti di TrackNet dopo il colpo, il primo punto piu' basso
@@ -52,7 +62,11 @@ Se TrackNet non vede il rimbalzo si provano altri due modi, in quest'ordine:
    perso la pallina si cercano macchie gialle piccole (3-120 px quadrati a
    1080p) vicino all'ultima posizione nota, in un raggio che parte da 12 px e
    cresce di 8 px per ogni fotogramma di buco, ignorando il giallo fermo dello
-   sfondo. Sulla traccia completata si rifanno i passi 1-3. Se la riga viene da
+   sfondo. Una macchia fuori dalla strada prevista dagli ultimi due punti
+   (oltre 12 px + 4 px per fotogramma di buco, a 1080p) che c'era gia' nello
+   stesso punto 0,4 s prima e' una pallina ferma e si scarta (COLORE_FERME):
+   la maschera del giallo fermo non vede le palline attraverso le maglie della
+   rete. Sulla traccia completata si rifanno i passi 1-3. Se la riga viene da
    direzione_nascosta.py (contatto coperto) il contatto e' a meta' del tratto
    in cui la pallina era coperta.
 5. RIMBALZO RICOSTRUITO: se il rimbalzo e' coperto (testa del giocatore, rete,
@@ -60,8 +74,11 @@ Se TrackNet non vede il rimbalzo si provano altri due modi, in quest'ordine:
    buco di 4-20 fotogrammi, si adattano due curve ai punti prima (almeno 5) e
    dopo (almeno 3) e il rimbalzo e' dove si incontrano. Se passano a piu' di
    20 px (su 1080) i punti dopo non sono la stessa pallina e non si stima
-   niente. Contatto: il frame della riga (contatto trovato) o la meta' del
-   tratto coperto. Margine circa +-20%; sul video "rimbalzo ricostruito".
+   niente; nemmeno se dopo il buco la pallina va meno di 0,3 volte la velocita'
+   di prima (RIC_VELOCITA_MIN: dopo un rimbalzo la velocita' resta simile,
+   dopo un colpo dell'avversario no). Contatto: il frame della riga (contatto
+   trovato) o la meta' del tratto coperto. Margine circa +-20%; sul video
+   "rimbalzo ricostruito".
 Un rimbalzo non vale per due colpi.
 
 6. PUNTO DEL RIMBALZO PER LA MAPPA: per tutti gli altri colpi con una
@@ -79,6 +96,42 @@ Un rimbalzo non vale per due colpi.
    ferme o un falso rimbalzo possono interrompere o allungare). Sul video
    "circa X km/h (dal rimbalzo)", la direzione dal rimbalzo. PUNTO4 = False:
    come prima.
+6b. PALLA CORTA DALLA SERIE DI RIMBALZI (dritti e rovesci): se il passo 6 non
+   trova il primo rimbalzo (coperto dalla rete o perso da TrackNet) si cerca la
+   serie dei rimbalzi dopo. Una smorzata rimbalza 2-3 volte prima della riga
+   del servizio, sempre piu' bassa e in avanti. Palla corta se si vedono
+   almeno 2 rimbalzi della STESSA pallina (traiettoria continua tra uno e
+   l'altro, senza salti di piu' di 40 px per frame a 1080p; volo piu' corto e
+   risalita piu' piccola ogni volta; in avanti; meno di 2 m di lato e 4 m tra
+   uno e l'altro), la serie comincia entro 2,5 s dal contatto e il primo
+   rimbalzo visto cade prima della riga del servizio. Un rimbalzo falso (TrackNet
+   che salta da una pallina ferma a quella vera) e' isolato e non fa una serie.
+   Il colpo finisce al primo evento dopo il contatto: il contatto del colpo dopo
+   (qualsiasi riga) o il picco del polso dello swing dopo visto dalla posa
+   (<video>_colpi.csv), se quel colpo non ha una riga; non l'inizio dello swing,
+   che la posa vede gia' 1-2 s dopo il colpo prima (preparazione). Dopo la fine
+   nessun rimbalzo e' piu' di quel colpo: nel cesto la pallina del colpo dopo
+   non diventa la serie di quello prima. Limite di sicurezza 6 s. Il punto
+   scritto e' il primo rimbalzo VISTO (di solito il secondo vero):
+   rimbalzo_trovato_come = "serie", profondita "palla corta", niente
+   dentro/fuori ne' velocita' media. "Palla corta" qui vuol dire che la pallina
+   muore davanti alla riga del servizio, un po' piu' largo dei 3 m dalla rete.
+   Colonna rimbalzi_prima_servizio: quanti rimbalzi (visti) fa la pallina
+   prima della riga del servizio, nei dritti e rovesci con il primo rimbalzo
+   di TrackNet prima della riga (e nelle righe "serie"). Non verificato su
+   smorzate vere (nessuna negli 8 video di prova): solo su traiettorie
+   simulate; vedi LEGGIMI.
+6c. PUNTO DEL RIMBALZO NEL BUCO: se il rimbalzo visto da TrackNet (passi 1 e
+   6) sta accanto a un buco di piu' di 0,067 s (2 frame a 30 fps, 4 a 60),
+   TrackNet ha perso la pallina proprio mentre toccava terra (dietro la rete o
+   il nastro) e il punto piu' basso visto e' ancora in aria: portato a terra
+   cade piu' lungo del vero (Giorgio 60,2 s: 25,2 m, fuori, invece di circa
+   20). Allora il punto si ricostruisce come al passo 5 (curva della discesa e
+   curva della risalita, dove si incontrano, sulla traccia della pallina del
+   colpo) e sostituisce quello visto per la mappa, dentro/fuori e profondita':
+   rimbalzo_trovato_come = "ricostruito", la nota dice tra quali frame
+   TrackNet ha perso la pallina. Velocita', media del volo e direzione
+   restano come prima (PUNTO_NEL_BUCO = False per spegnere).
 7. VELOCITA' MEDIA DEL VOLO (velocita_media_kmh): distanza a terra dal
    contatto al rimbalzo trovato diviso il tempo di volo, in km/h. Nelle stime
    dei passi 1-5 e' il dato da cui si ricava la velocita' d'uscita ("media fino
@@ -96,7 +149,7 @@ contrario); nel terzo centrale nessuno dei due. La mano si ricava dai contatti v
 (--mano auto) o si indica (--mano destra / sinistra).
 Il rimbalzo trovato (passi 1-6) e' nelle colonne rimbalzo_trovato_x_m,
 rimbalzo_trovato_y_m, rimbalzo_trovato_frame e rimbalzo_trovato_come
-(tracknet, colore, ricostruito). rimbalzo_x_m e rimbalzo_y_m restano quelle
+(tracknet, colore, ricostruito, serie). rimbalzo_x_m e rimbalzo_y_m restano quelle
 del servizio, usate per la fascia (previsto o trovato).
 Dal rimbalzo trovato: dentro_fuori (campo singolo; servizio: riquadro in
 diagonale; si decide sempre, la riga conta dentro), distanza_riga_m (+ dentro,
@@ -153,11 +206,26 @@ CAMPO_X = (-1.5, 12.5)
 VOLO_S = (0.25, 1.6)
 RAGGIO_PALLINA = 0.033      # m: al rimbalzo il centro della pallina e' a quest'altezza (rimbalzo_a_terra)
 RIMBALZO_SUL_RAGGIO = True  # False = come prima: il centro della pallina portato a z = 0 (rimbalzo piu' lungo)
+PUNTO_NEL_BUCO = True       # passo 6c (08/10): rimbalzo di TrackNet accanto a un buco -> punto ricostruito (mappa, dentro/fuori)
+RIMB_BUCO_S = 0.067         # buco (s) subito prima o subito dopo il punto piu' basso oltre il quale si ricostruisce
+NOTA_PUNTO_BUCO = "punto del rimbalzo ricostruito"
 ALTEZZA_CONTATTO = {"servizio": 2.6}   # m; tutti gli altri colpi 1,0 m
 NOTA_RIMBALZO = "velocita' stimata dal rimbalzo"
 NOTA_RICOSTRUITO = "velocita' stimata dal rimbalzo ricostruito"   # comincia come NOTA_RIMBALZO
 NOTA_ESTESA = "pallina mossa al colpo"     # righe "solo direzione" della ricerca estesa (velocita_uscita.py)
 PUNTO4 = True               # "solo direzione" + rimbalzo del passo 6 -> velocita' dal contatto della riga
+# pallina del colpo (08/10): il rimbalzo si cerca solo sulla traccia coerente di TrackNet che contiene i punti del colpo
+TRACCIA_DEL_COLPO = True
+TRACCIA_SALTO = 0.08        # tracce coerenti: spostamento massimo per fotogramma, in altezze dell'immagine
+TRACCIA_BUCO_S = 0.75       # tracce coerenti: secondi massimi senza punti dentro una traccia
+TRACCIA_VICINO = 0.10       # un punto del colpo "sta" nella traccia se il punto di TrackNet e' entro 0,1 altezze
+# passo 4 (08/10): una macchia fuori strada che c'era gia' nello stesso punto 0,4 s prima e' una pallina ferma
+COLORE_FERME = True
+COLORE_FERME_S = 0.4        # secondi prima: la pallina in volo in quell'istante era altrove
+COLORE_RAGGIO_PREV = (12, 4) # macchia "sulla strada" se entro 12 px + 4 px per fotogramma di buco dalla previsione
+# passo 5 (08/10): rimbalzo ricostruito solo se dopo il buco la pallina va almeno RIC_VELOCITA_MIN volte la
+# velocita' di prima (nell'immagine): dopo un rimbalzo la velocita' resta simile, dopo un colpo dell'avversario no
+RIC_VELOCITA_MIN = 0.3
 
 # passo 4: colore nel campo lontano (misure in px a 1080p, scalate con l'altezza del video)
 COLORE_HSV = ((22, 60, 100), (48, 255, 255))
@@ -176,6 +244,74 @@ _i = vu.CAMPI.index("rimbalzo_y_m") + 1
 CAMPI = vu.CAMPI[:_i] + CAMPI_TROVATO + vu.CAMPI[_i:]
 _i = CAMPI.index("velocita_rimbalzo_kmh") + 1
 CAMPI = CAMPI[:_i] + ["velocita_media_kmh"] + CAMPI[_i:]      # passo 7
+_i = CAMPI.index("profondita") + 1
+CAMPI = CAMPI[:_i] + ["rimbalzi_prima_servizio"] + CAMPI[_i:]  # passo 6b
+
+
+def tracce(tn, da, a, h_img, fps, salto=None, buco_s=None):
+    """
+    Punti di TrackNet tra i frame da e a divisi in tracce coerenti, una pallina per traccia (dict frame -> punto):
+    in ordine di tempo ogni punto va alla traccia il cui ultimo punto (o la posizione prevista con l'ultima
+    velocita') e' piu' vicino, entro TRACCIA_SALTO altezze dell'immagine per fotogramma passato (al massimo 3) e con
+    al massimo TRACCIA_BUCO_S secondi dall'ultimo punto; se no comincia una traccia nuova. (Come in
+    direzione_nascosta.py.)
+    """
+    salto_max = TRACCIA_SALTO if salto is None else salto
+    buco_max = TRACCIA_BUCO_S if buco_s is None else buco_s
+    elenco = []
+    for f in range(da, a + 1):
+        if f not in tn:
+            continue
+        p = np.asarray(tn[f][:2], float)
+        migliore, dist = None, None
+        for tr in elenco:
+            g = tr["ultimo"]
+            passo = f - g
+            if passo > buco_max * fps:
+                continue
+            q = np.asarray(tn[g][:2], float)
+            dd = float(np.linalg.norm(p - q))
+            prec = [h for h in tr["punti"] if h < g]
+            if prec:
+                h = max(prec)
+                v = (q - np.asarray(tn[h][:2], float)) / (g - h)
+                dd = min(dd, float(np.linalg.norm(p - (q + v * passo))))
+            if dd <= salto_max * h_img * min(passo, 3) and (dist is None or dd < dist):
+                migliore, dist = tr, dd
+        if migliore is None:
+            elenco.append({"punti": {f: tn[f]}, "ultimo": f})
+        else:
+            migliore["punti"][f] = tn[f]
+            migliore["ultimo"] = f
+    return [tr["punti"] for tr in elenco]
+
+
+def traccia_del_colpo(t, tn, riga, cam, altezze):
+    """
+    I punti di TrackNet della pallina del colpo: la traccia coerente (tracce) che contiene piu' punti del colpo
+    (_punti della riga, scritti da velocita_uscita.py o direzione_nascosta.py: stesso frame e posizione entro
+    TRACCIA_VICINO altezze del giocatore). None se la riga non ha _punti o nessuna traccia li contiene: allora il
+    rimbalzo si cerca su tutti i punti, come prima.
+    """
+    punti = riga.get("_punti") or []
+    if not TRACCIA_DEL_COLPO or not punti:
+        return None
+    h_img = 2 * float(np.asarray(cam["K"], float)[1, 2])
+    fc = int(riga["frame"])
+    f0 = min(int(p[0]) for p in punti)
+    da, a = min(fc, f0) - PRIMA_S - BUCO_MAX, fc + int(DURATA_MAX_S * t["fps"]) + 10
+    migliore, voti = None, 0
+    for tr in tracce(tn, da, a, h_img, t["fps"]):
+        n = 0
+        for f, x, y in punti:
+            f = int(f)
+            if f in tr:
+                h = altezze.get(f) or altezze.get(f - 1) or 300.0
+                if np.hypot(tr[f][0] - x, tr[f][1] - y) <= TRACCIA_VICINO * h:
+                    n += 1
+        if n > voti:
+            migliore, voti = tr, n
+    return migliore
 
 
 def partenza_stima(t, cam, riga, piedi, punti, t_contatto):
@@ -380,11 +516,13 @@ def estendi_col_colore(video, cap, tn, da, a, scala):
     """Punti di TrackNet tra da e a, con i buchi riempiti dal colore; (traccia, frame aggiunti)."""
     fermo, fermo_pronto = None, False           # il giallo fermo si calcola solo se serve
     traccia = {f: tn[f] for f in range(da, a + 1) if f in tn}
-    aggiunti, ultimo = set(), None
+    aggiunti, ultimo, penultimo = set(), None, None
+    fps_video = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    ferme_viste = []                            # macchie gia' riconosciute come palline ferme in questa finestra
     pos = None                                  # prossimo frame che cap legge: leggere in fila e' molto
     for f in range(da, a + 1):                  # piu' veloce che saltare (4K: 0,5 s a salto, 0,02 s in fila)
         if f in tn:
-            ultimo = (f, tn[f])
+            penultimo, ultimo = ultimo, (f, tn[f])
             if pos == f:
                 cap.grab()
                 pos = f + 1
@@ -401,11 +539,38 @@ def estendi_col_colore(video, cap, tn, da, a, scala):
             break
         raggio = (COLORE_RAGGIO[0] + COLORE_RAGGIO[1] * (f - ultimo[0])) * scala
         c = macchie_lontane(frame, ultimo[1][0], ultimo[1][1], raggio, fermo, scala)
+        if c and COLORE_FERME:
+            # una macchia che c'era gia', nello stesso punto, COLORE_FERME_S secondi prima (quando la pallina del
+            # colpo era altrove) e' una pallina ferma, non la pallina in volo: la maschera del giallo fermo puo'
+            # non vederla (pallina vista attraverso la rete: nella mediana il colore e' fuori soglia).
+            # Il controllo (un fotogramma in piu' da leggere) si fa solo per le macchie lontane da dove gli ultimi
+            # due punti portano la pallina: quelle sulla strada prevista si prendono come prima.
+            k = f - ultimo[0]
+            r_f = COLORE_RAGGIO[0] * scala
+            if penultimo is not None:
+                v = (np.asarray(ultimo[1], float) - np.asarray(penultimo[1], float)) / (ultimo[0] - penultimo[0])
+                prev = np.asarray(ultimo[1], float) + v * k
+                r_prev = (COLORE_RAGGIO_PREV[0] + COLORE_RAGGIO_PREV[1] * k) * scala
+            else:
+                prev, r_prev = np.asarray(ultimo[1], float), 0.0
+            sospette = [q for q in c if np.hypot(q[0] - prev[0], q[1] - prev[1]) > r_prev]
+            sospette = [q for q in sospette if not any(np.hypot(q[0] - z[0], q[1] - z[1]) <= r_f for z in ferme_viste)]
+            if sospette:
+                g = f - int(round(COLORE_FERME_S * fps_video))
+                if g >= 1:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, g - 1)
+                    ok_g, frame_g = cap.read()
+                    pos = None
+                    if ok_g:
+                        for q in sospette:
+                            if macchie_lontane(frame_g, q[0], q[1], r_f, None, scala):
+                                ferme_viste.append(q)
+            c = [q for q in c if not any(np.hypot(q[0] - z[0], q[1] - z[1]) <= r_f for z in ferme_viste)]
         if c:
             p = min(c, key=lambda q: np.hypot(q[0] - ultimo[1][0], q[1] - ultimo[1][1]))
             traccia[f] = p
             aggiunti.add(f)
-            ultimo = (f, p)
+            penultimo, ultimo = ultimo, (f, p)
     return traccia, aggiunti
 
 
@@ -468,6 +633,11 @@ def cerca_rimbalzo_coperto(t, tn, ripetuti, fc, cam, altezza_img):
             continue
         istanti = lambda xs: np.array([vu.istante(t, f) for f in xs])
         curva = lambda xs: [np.polyfit(istanti(xs), [tn[f][d] for f in xs], 2 if len(xs) >= 5 else 1) for d in (0, 1)]
+        # la pallina dopo il buco deve andare almeno RIC_VELOCITA_MIN volte la velocita' di prima (08/10)
+        v_prima = np.linalg.norm(np.subtract(tn[prima[-1]][:2], tn[prima[0]][:2])) / max(1, prima[-1] - prima[0])
+        v_dopo = np.linalg.norm(np.subtract(tn[dopo[-1]][:2], tn[dopo[0]][:2])) / max(1, dopo[-1] - dopo[0])
+        if RIC_VELOCITA_MIN and v_dopo < RIC_VELOCITA_MIN * v_prima:
+            continue
         cp, cd = curva(prima), curva(dopo)
         punto = lambda c, x: np.array([np.polyval(c[0], x), np.polyval(c[1], x)])
         r = minimize_scalar(lambda x: np.sum((punto(cp, x) - punto(cd, x)) ** 2),
@@ -480,6 +650,87 @@ def cerca_rimbalzo_coperto(t, tn, ripetuti, fc, cam, altezza_img):
         return {"t": float(r.x), "terra": terra, "scarto": scarto, "ok": ok, "buco": (a, b),
                 "punti": prima + dopo}
     return None
+
+
+def punto_nel_buco(t, tn, ripetuti, fb, cam, altezza_img):
+    """
+    Rimbalzo trovato da TrackNet al frame fb (il punto piu' basso visto). Se subito dopo o subito prima c'e' un buco
+    di piu' di RIMB_BUCO_S secondi, TrackNet ha perso la pallina proprio quando toccava terra e il punto piu' basso
+    visto e' ancora in aria: portato a terra cade piu' lungo (Giorgio 60,2 s: 25,2 m invece di circa 20). Allora il
+    rimbalzo si ricostruisce nel buco come al passo 5 (curva della discesa e curva della risalita, dove si
+    incontrano). Restituisce il dict di cerca_rimbalzo_coperto o None (niente buco, o curve che non si incontrano).
+    """
+    buco = max(1, int(round(RIMB_BUCO_S * t["fps"])))
+    fs = [f for f in range(fb - 60, fb + 61) if f in tn and not ripetuti[f]]
+    if fb not in fs:
+        return None
+    i = fs.index(fb)
+    if i + 1 < len(fs) and fs[i + 1] - fb > buco:
+        inizio = fb
+    elif i > 0 and fb - fs[i - 1] > buco:
+        inizio = fs[i - 1]
+    else:
+        return None
+    r = cerca_rimbalzo_coperto_da(t, {f: tn[f] for f in fs}, ripetuti, inizio, cam, altezza_img)
+    return r if r is not None and r["ok"] else None
+
+
+def cerca_rimbalzo_coperto_da(t, tn, ripetuti, a, cam, altezza_img):
+    """Come cerca_rimbalzo_coperto, ma solo per il buco che comincia al frame a (punti prima presi anche da prima)."""
+    fs = [f for f in sorted(tn) if not ripetuti[f]]
+    if a not in fs or fs.index(a) + 1 >= len(fs):
+        return None
+    b = fs[fs.index(a) + 1]
+    if not RIC_BUCO[0] <= b - a <= RIC_BUCO[1]:
+        return None
+    prima = [f for f in fs if f <= a][-8:]
+    dopo = [f for f in fs if f >= b][:6]
+    if len(prima) < RIC_PUNTI[0] or len(dopo) < RIC_PUNTI[1]:
+        return None
+    if not (tn[prima[-1]][1] > tn[prima[-4]][1] + 2 and tn[dopo[0]][1] > tn[dopo[2]][1] + 2):
+        return None
+    istanti = lambda xs: np.array([vu.istante(t, f) for f in xs])
+    curva = lambda xs: [np.polyfit(istanti(xs), [tn[f][d] for f in xs], 2 if len(xs) >= 5 else 1) for d in (0, 1)]
+    cp, cd = curva(prima), curva(dopo)
+    punto = lambda c, x: np.array([np.polyval(c[0], x), np.polyval(c[1], x)])
+    r = minimize_scalar(lambda x: np.sum((punto(cp, x) - punto(cd, x)) ** 2),
+                        bounds=(vu.istante(t, a), vu.istante(t, b)), method="bounded")
+    scarto = float(np.sqrt(r.fun))
+    pixel = 0.5 * (punto(cp, r.x) + punto(cd, r.x))
+    terra = rimbalzo_a_terra(pixel, cam)
+    ok = (scarto <= RIC_SCARTO_MAX * altezza_img and CAMPO_Y[0] <= terra[1] <= CAMPO_Y[1]
+          and CAMPO_X[0] <= terra[0] <= CAMPO_X[1])
+    return {"t": float(r.x), "terra": terra, "scarto": scarto, "ok": ok, "buco": (a, b), "punti": prima + dopo}
+
+
+def correggi_punti_nel_buco(t, tn, cam, colpi, altezza_img, verbose=False):
+    """
+    Per i rimbalzi trovati da TrackNet accanto a un buco (punto_nel_buco): solo il punto del rimbalzo (dentro/fuori,
+    profondita', mappa) diventa quello ricostruito. Velocita', media del volo e direzione non cambiano.
+    """
+    ripetuti = t["tempi"]["dup"] if t.get("tempi") is not None else np.zeros(len(t["frame"]) + 300, bool)
+    fps_vero = t["fps"] if t.get("tempi") is None else t["tempi"]["fps"]
+    for c in colpi:
+        if c.get("rimbalzo_trovato_come") != "tracknet" or c.get("rimbalzo_trovato_frame") in (None, ""):
+            continue
+        fb = int(c["rimbalzo_trovato_frame"])
+        r = punto_nel_buco(t, tn(c) if callable(tn) else tn, ripetuti, fb, cam, altezza_img)
+        if r is None:
+            continue
+        a, b = r["buco"]
+        x0, y0 = float(c["rimbalzo_trovato_x_m"]), float(c["rimbalzo_trovato_y_m"])
+        x, y = float(r["terra"][0]), float(r["terra"][1])
+        f_nuovo = a + int(round((r["t"] - vu.istante(t, a)) * fps_vero))
+        c.update({"rimbalzo_trovato_x_m": round(x, 2), "rimbalzo_trovato_y_m": round(y, 2),
+                  "rimbalzo_trovato_frame": f_nuovo, "rimbalzo_trovato_come": "ricostruito"})
+        nota = str(c.get("nota", ""))
+        c["nota"] = (nota + "; " if nota else "") + (
+            f"{NOTA_PUNTO_BUCO}: TrackNet ha perso la pallina tra i frame {a} e {b}, il punto piu' basso visto "
+            f"({fb}, a ({x0:.1f}; {y0:.1f}) m) era in aria; ricostruito a ({x:.1f}; {y:.1f}) m, "
+            f"curve a {r['scarto'] * 1080 / altezza_img:.0f} px (1080p); velocita' e direzione come prima")
+        if verbose:
+            print(f"frame {c['frame']} {c['colpo']}: punto del rimbalzo ricostruito nel buco {a}-{b}: "
+                  f"({x0:.1f}; {y0:.1f}) -> ({x:.1f}; {y:.1f}) m")
 
 
 def stima_ricostruita(t, tn, cam, riga, altezza_img, usati):
@@ -559,6 +810,163 @@ def rimbalzo_dopo_colpo(t, tn, cam, riga, video, cap, scala, altezza_img, usati)
     return None
 
 
+# passo 6b: palla corta dalla serie di rimbalzi (06/10). Una smorzata rimbalza 2-3 volte prima della riga del
+# servizio, sempre piu' bassa e in avanti; un rimbalzo falso (TrackNet che salta tra due palline) e' isolato.
+#
+# Macchina a stati per ogni colpo k (a video finito, un colpo alla volta):
+#   1 COLPO (velocita_uscita: swing della posa + contatto fc)  ->  2 VOLO (palla_locale: pallina del colpo k, senza
+#   palline ferme)  ->  3 PRIMO RIMBALZO (passi 1-6, fino a DURATA_MAX_S dal contatto): visto prima della riga del
+#   servizio -> 5, visto oltre -> 6, non visto -> 4  ->  4 RIMBALZO NASCOSTO: serie che comincia entro
+#   CORTA_INIZIO_MAX_S dal contatto -> 5, se no -> 6  ->  5 PALLINA CHE MUORE: rimbalzo dopo accettato solo se e' la
+#   stessa pallina (serie_di_rimbalzi), al primo che non torna -> 6  ->  6 FINE COLPO: decisa da un evento
+#   (fine_dei_colpi): contatto del colpo dopo, o picco del polso dello swing dopo visto dalla posa se quel colpo non
+#   ha una riga. Dopo la fine niente e' piu' del colpo k; ogni rimbalzo vale per un solo colpo (usati).
+#   CORTA_SICUREZZA_S e' solo un limite di sicurezza: a quel punto la pallina rotola.
+CORTA_INIZIO_MAX_S = 2.5    # la serie (rimbalzo nascosto) deve cominciare entro 2,5 s dal contatto
+CORTA_SICUREZZA_S = 6.0     # limite di sicurezza della ricerca, se nessun evento chiude prima il colpo
+CORTA_SALTO_PX = 40         # spostamento massimo per frame tra due rimbalzi (a 1080p)
+CORTA_BUCO = 3              # buco massimo di TrackNet (frame) tra due rimbalzi
+CORTA_COPERTURA = 0.6       # frazione minima di frame visti tra due rimbalzi
+CORTA_VOLO_MAX_S = 1.2      # tra due rimbalzi successivi di una palla corta (rimbalzo fino a ~1,7 m)
+CORTA_INDIETRO_M = 0.5      # il rimbalzo dopo non torna indietro piu' di cosi'
+CORTA_LATO_M = 2.0          # ne' si sposta di lato piu' di cosi'
+CORTA_PASSO_M = 4.0         # distanza massima tra due rimbalzi
+CORTA_MIN = 2               # rimbalzi visti in serie (il primo prima della riga del servizio) per dire "palla corta"
+
+
+def tutti_i_rimbalzi(tn, da, a, cam):
+    """Tutti i rimbalzi (stessa regola di trova_rimbalzo) nel campo avversario, dalla rete in poi, tra da e a."""
+    fs = [f for f in range(da, a + 1) if f in tn]
+    out = []
+    for i in range(3, len(fs) - 2):
+        if fs[i + 2] - fs[i - 3] > 10:
+            continue
+        y = tn[fs[i]][1]
+        prima = [tn[g][1] for g in fs[i - 3:i]]
+        dopo = [tn[g][1] for g in fs[i + 1:i + 3]]
+        if not (all(y >= p for p in prima) and all(y > q for q in dopo)
+                and y - min(prima) > 2 and y - min(dopo) > 3):
+            continue
+        terra = rimbalzo_a_terra(tn[fs[i]], cam)
+        if vu.RETE_Y <= terra[1] <= CAMPO_Y[1] and CAMPO_X[0] <= terra[0] <= CAMPO_X[1]:
+            out.append((fs[i], tn[fs[i]], terra))
+    return out
+
+
+def _tratto_continuo(tn, f0, f1, scala):
+    """La pallina tra due rimbalzi e' una sola traiettoria vista bene (niente salti tra palline diverse)?"""
+    fs = [f for f in range(f0, f1 + 1) if f in tn]
+    if len(fs) < CORTA_COPERTURA * (f1 - f0 + 1):
+        return False
+    for g, h in zip(fs, fs[1:]):
+        if h - g > CORTA_BUCO:
+            return False
+        if np.hypot(*(np.asarray(tn[h], float) - np.asarray(tn[g], float))) > CORTA_SALTO_PX * scala * (h - g):
+            return False
+    return True
+
+
+def serie_di_rimbalzi(tn, rimbalzi, fps, scala, inizio=None, inizio_max=None):
+    """
+    La serie piu' lunga di rimbalzi successivi che si comporta come una pallina che muore: sempre piu' bassi
+    (voli piu' corti, risalita piu' piccola), in avanti, poco di lato, traiettoria continua tra uno e l'altro.
+    Con inizio, solo la serie che parte da quel rimbalzo. Lista di rimbalzi (vuota se nessuna).
+    """
+    migliore = []
+    if inizio is not None:
+        partenze = [inizio]
+    else:                           # con inizio_max: solo le serie che cominciano entro quel frame
+        partenze = [i for i, r in enumerate(rimbalzi) if inizio_max is None or r[0] <= inizio_max]
+    for i in partenze:
+        serie, volo_prec, salita_prec = [rimbalzi[i]], None, None
+        for j in range(i + 1, len(rimbalzi)):
+            (f0, p0, g0), (f1, p1, g1) = serie[-1], rimbalzi[j]
+            volo = f1 - f0
+            tra = [tn[f][1] for f in range(f0 + 1, f1) if f in tn]
+            salita = p0[1] - min(tra) if tra else 0.0
+            ok = (volo <= CORTA_VOLO_MAX_S * fps and _tratto_continuo(tn, f0, f1, scala)
+                  and g1[1] >= g0[1] - CORTA_INDIETRO_M and abs(g1[0] - g0[0]) <= CORTA_LATO_M
+                  and np.hypot(g1[0] - g0[0], g1[1] - g0[1]) <= CORTA_PASSO_M
+                  and (volo_prec is None or (volo <= volo_prec + 2 and salita <= 1.25 * salita_prec + 3 * scala)))
+            if not ok:
+                break               # si prende solo il rimbalzo subito dopo: una serie non salta rimbalzi
+            serie.append(rimbalzi[j])
+            volo_prec, salita_prec = volo, salita
+        if len(serie) > len(migliore):
+            migliore = serie
+    return migliore
+
+
+def prima_del_servizio(serie):
+    """Quanti rimbalzi della serie, dall'inizio, cadono prima della riga del servizio."""
+    n = 0
+    for _, _, g in serie:
+        if g[1] >= vu.SERVIZIO_Y:
+            break
+        n += 1
+    return n
+
+
+def fine_dei_colpi(t, colpi, classi):
+    """
+    Stato 6 (FINE COLPO): {frame del contatto: ultimo frame che appartiene a quel colpo}. Lo decide il primo evento
+    dopo il contatto: il contatto del colpo dopo (una riga qualsiasi, anche servizio), oppure il picco del polso di uno
+    swing dopo visto dalla posa (finestra che comincia dopo il contatto, anche senza riga: colpo non trovato). Non
+    l'inizio dello swing: la preparazione comincia gia' 1-2 s dopo il colpo prima. Se nessun evento: limite di
+    sicurezza o fine del video.
+    """
+    n, fps = len(t["frame"]), t["fps"]
+    contatti = sorted(int(c["frame"]) for c in colpi)
+    swing = []
+    for a, b in vu.finestre_colpi(classi, n):
+        p = vu.picco_polso(t, a, b)
+        swing.append((a, p if p is not None else a))
+    fine = {}
+    for fc in contatti:
+        eventi = [c for c in contatti if c > fc]
+        eventi += [p for a, p in swing if a - vu.MARGINE_FINESTRA > fc and p > fc]
+        fine[fc] = min(eventi + [fc + int(CORTA_SICUREZZA_S * fps), n])
+    return fine
+
+
+def palla_corta_da_serie(t, tn, cam, riga, usati, scala, fine):
+    """
+    Stati 4-5. Primo rimbalzo non visto (rete, buco di TrackNet): palla corta se dopo il colpo si vede una serie di
+    almeno CORTA_MIN rimbalzi di una pallina che muore, che comincia entro CORTA_INIZIO_MAX_S dal contatto e prima
+    della riga del servizio, e sta tutta prima della fine del colpo (fine_dei_colpi). (x, y, frame del primo visto,
+    rimbalzi visti prima della riga, frame della serie) o None. Il punto e' il primo rimbalzo VISTO, non l'arrivo.
+    """
+    fc, fps = int(riga["frame"]), t["fps"]
+    rimb = [r for r in tutti_i_rimbalzi(tn, fc + int(VOLO_S[0] * fps), fine, cam) if r[0] not in usati]
+    serie = serie_di_rimbalzi(tn, rimb, fps, scala, inizio_max=fc + int(CORTA_INIZIO_MAX_S * fps))
+    n = prima_del_servizio(serie)
+    if len(serie) < CORTA_MIN or n < 1:
+        return None
+    f, _, g = serie[0]
+    return float(g[0]), float(g[1]), f, n, [r[0] for r in serie]
+
+
+def conta_rimbalzi_prima_del_servizio(t, tn, cam, colpi, scala, fine_di):
+    """
+    Colonna rimbalzi_prima_servizio per dritti e rovesci con il primo rimbalzo visto prima della riga del
+    servizio: quanti rimbalzi (visti) fa la pallina prima della riga. Per il coach: piu' sono, piu' la smorzata
+    "muore". Solo se il primo rimbalzo e' un punto di TrackNet (tracknet), non colore o ricostruito.
+    """
+    fps = t["fps"]
+    for c in colpi:
+        if c.get("rimbalzo_trovato_come") != "serie":
+            c.pop("rimbalzi_prima_servizio", None)
+        if (c.get("colpo") == "servizio" or c.get("rimbalzo_trovato_come") != "tracknet"
+                or float(c["rimbalzo_trovato_y_m"]) >= vu.SERVIZIO_Y):
+            continue
+        fb = int(c["rimbalzo_trovato_frame"])
+        rimb = tutti_i_rimbalzi(tn, fb - 12, fine_di.get(int(c["frame"]), fb + int(CORTA_SICUREZZA_S * fps)), cam)
+        i = next((k for k, r in enumerate(rimb) if abs(r[0] - fb) <= 2), None)
+        if i is None:
+            continue
+        c["rimbalzi_prima_servizio"] = prima_del_servizio(serie_di_rimbalzi(tn, rimb, fps, scala, inizio=i))
+
+
 def direzione_dal_rimbalzo(riga, x, y):
     """La direzione che darebbe il rimbalzo trovato (stesse regole di velocita_uscita.py), o None."""
     try:
@@ -592,6 +1000,8 @@ def aggiungi_media(t, colpi, verbose=False):
     fps_vero = t["fps"] if t.get("tempi") is None else t["tempi"]["fps"]
     for c in colpi:
         if c.get("velocita_uscita_kmh", "") == "" or c.get("rimbalzo_trovato_frame") in (None, ""):
+            continue
+        if c.get("rimbalzo_trovato_come") == "serie":     # passo 6b: non e' il primo rimbalzo
             continue
         t_c = vu.istante(t, int(c["frame"])) + 0.5 / fps_vero
         volo = vu.istante(t, int(c["rimbalzo_trovato_frame"])) - t_c
@@ -627,6 +1037,10 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     # i punti di TrackNet su palline ferme (velocita_uscita.py) si tolgono anche qui
     ferme = vu.leggi_palline_ferme(os.path.join(cartella_dati, nome + "_palline_ferme.csv"))
     tn = {f: p for f, p in tn.items() if f not in ferme}
+    # passo 6b, stato 6: fine di ogni colpo (contatto dopo o picco del polso dello swing dopo); senza il file della
+    # posa (risultati vecchi) solo i contatti
+    p_colpi = os.path.join(cartella_dati, nome + "_colpi.csv")
+    fine_di = fine_dei_colpi(t, colpi, vu.leggi_colpi(p_colpi) if os.path.exists(p_colpi) else {})
     altezze = {int(f): float(b[3] - b[1]) for f, b in zip(t["frame"], t["box"]) if np.isfinite(b[3] - b[1])}
     # i rimbalzi gia' usati (passo rieseguito) non valgono per altri colpi
     usati = set()
@@ -638,6 +1052,24 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             usati.add(int(c["rimbalzo_trovato_frame"]))
     da_stimare = lambda c: (c.get("velocita_uscita_kmh", "") == "" and c.get("velocita_rimbalzo_kmh", "") == ""
                             and not str(c.get("nota", "")).startswith(NOTA_RIMBALZO))
+
+    tracce_colpi = {}                             # traccia della pallina di ogni colpo, calcolata una volta sola
+
+    def punti_colpo(c):
+        """I punti di TrackNet su cui cercare il rimbalzo del colpo c: la traccia della sua pallina
+        (traccia_del_colpo) se c'e', se no tutti i punti filtrati, come prima."""
+        if id(c) in tracce_colpi:
+            return tracce_colpi[id(c)]
+        tr = traccia_del_colpo(t, tn, c, cam, altezze)
+        tracce_colpi[id(c)] = tn if tr is None else tr
+        if verbose:
+            if tr is not None:
+                print(f"frame {c['frame']} {c['colpo']}: rimbalzo cercato sulla traccia della pallina del colpo "
+                      f"({len(tr)} punti, frame {min(tr)}-{max(tr)})")
+            elif TRACCIA_DEL_COLPO and c.get("_punti"):
+                print(f"frame {c['frame']} {c['colpo']}: nessuna traccia di TrackNet contiene i punti del colpo: "
+                      "rimbalzo cercato su tutti i punti")
+        return tn if tr is None else tr
 
     def applica(c, risultato, come, come_breve):
         campi, fb = risultato
@@ -654,7 +1086,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     for c in colpi:
         if not da_stimare(c):
             continue
-        s = stima(t, tn, altezze, cam, c)
+        s = stima(t, punti_colpo(c), altezze, cam, c)
         if s is None:
             continue
         fb = int(s["nota"].split("rimbalzo al frame ")[1].split()[0])
@@ -667,14 +1099,14 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     altezza_img = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
     for c in colpi:
         if da_stimare(c):
-            r = stima_colore(t, tn, altezze, cam, c, video, cap, altezza_img / 1080, usati)
+            r = stima_colore(t, punti_colpo(c), altezze, cam, c, video, cap, altezza_img / 1080, usati)
             if r is not None:
                 applica(c, r, "rimbalzo trovato con il colore", "colore")
 
     # passo 5: rimbalzo coperto, ricostruito dalle curve prima e dopo
     for c in colpi:
         if da_stimare(c):
-            r = stima_ricostruita(t, tn, cam, c, altezza_img, usati)
+            r = stima_ricostruita(t, punti_colpo(c), cam, c, altezza_img, usati)
             if r is not None:
                 applica(c, r, "rimbalzo ricostruito", "ricostruito")
             elif verbose:
@@ -691,7 +1123,24 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             c.update({"rimbalzo_trovato_x_m": float(m.group(2)), "rimbalzo_trovato_y_m": float(m.group(3)),
                       "rimbalzo_trovato_frame": int(m.group(1)), "rimbalzo_trovato_come": come})
             continue
-        r = rimbalzo_dopo_colpo(t, tn, cam, c, video, cap, altezza_img / 1080, altezza_img, usati)
+        tn_c = punti_colpo(c)
+        r = rimbalzo_dopo_colpo(t, tn_c, cam, c, video, cap, altezza_img / 1080, altezza_img, usati)
+        if r is None and c.get("colpo") != "servizio":
+            # passo 6b: primo rimbalzo non visto, palla corta se si vede la serie dei rimbalzi dopo
+            pc = palla_corta_da_serie(t, tn, cam, c, usati, altezza_img / 1080, fine_di[int(c["frame"])])
+            if pc is not None:
+                x, y, fb, quanti, frame_serie = pc
+                usati.update(frame_serie)       # i rimbalzi della serie non valgono per altri colpi
+                c.update({"rimbalzo_trovato_x_m": round(x, 2), "rimbalzo_trovato_y_m": round(y, 2),
+                          "rimbalzo_trovato_frame": int(fb), "rimbalzo_trovato_come": "serie",
+                          "rimbalzi_prima_servizio": quanti})
+                c["nota"] = (nota + "; " if nota else "") + (
+                    f"primo rimbalzo non visto: serie di {len(frame_serie)} rimbalzi (frame {', '.join(map(str, frame_serie))}), "
+                    f"{quanti} prima della riga del servizio: palla corta")
+                if verbose:
+                    print(f"frame {c['frame']} {c['colpo']}: palla corta, {quanti} rimbalzi prima del servizio "
+                          f"({x:.1f}; {y:.1f}) m, frame {frame_serie}")
+                continue
         if r is None:
             if verbose:
                 print(f"frame {c['frame']} {c['colpo']}: punto del rimbalzo non trovato")
@@ -700,7 +1149,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         usati.add(fb)
         if (PUNTO4 and nota.startswith(NOTA_ESTESA) and c.get("velocita_uscita_kmh", "") == ""
                 and c.get("velocita_rimbalzo_kmh", "") == ""):
-            s4 = stima_da_contatto_esteso(t, tn, cam, c, x, y, fb, come)
+            s4 = stima_da_contatto_esteso(t, tn_c, cam, c, x, y, fb, come)
             if s4 is not None:
                 applica(c, s4, "rimbalzo del passo 6 e contatto della ricerca estesa", come)
                 continue
@@ -714,8 +1163,16 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
                   + (f", darebbe \"{d}\"" if d and d != c["direzione"] else ""))
     cap.release()
     aggiungi_media(t, colpi, verbose)
+    if PUNTO_NEL_BUCO:
+        correggi_punti_nel_buco(t, punti_colpo, cam, colpi, altezza_img, verbose)   # sulla traccia del colpo (B)
     vu.aggiungi_soglie(colpi)
     vu.aggiungi_dentro_fuori(colpi)
+    for c in colpi:                      # passo 6b: dalla serie di rimbalzi solo la zona, non dentro/fuori
+        if c.get("rimbalzo_trovato_come") == "serie":
+            for k in ("dentro_fuori", "distanza_riga_m", "riga_vicina"):
+                c.pop(k, None)
+            c["profondita"] = "palla corta"
+    conta_rimbalzi_prima_del_servizio(t, tn, cam, colpi, altezza_img / 1080, fine_di)
     # dritto inside-out / inside-in (dopo il rimbalzo trovato, che e' l'arrivo piu' sicuro)
     m = vu.aggiungi_inside(colpi, mano)
     if verbose:
