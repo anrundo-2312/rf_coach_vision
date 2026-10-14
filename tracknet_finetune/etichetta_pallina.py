@@ -2,7 +2,13 @@
 etichetta_pallina.py - etichettatura a mano della pallina nei fotogrammi del
 set di test (scelti ed estratti da scegli_frame_test.py). Gira sul PC.
 
-    python tracknet_finetune/etichetta_pallina.py
+    python tracknet_finetune/etichetta_pallina.py                                   (set di test)
+    python tracknet_finetune/etichetta_pallina.py --cartella tracknet_finetune/addestramento --suggerimenti
+
+Con --suggerimenti (per i fotogrammi di ADDESTRAMENTO, da scegli_tratti_addestramento.py)
+i suggerimenti sono accesi dall'inizio e il punto parte gia' sul suggerimento di
+TrackNet (o del colore): se e' giusto basta Invio, se no si clicca altrove, N se
+la pallina non c'e'. Per il set di test NON si usa: il voto si gonfierebbe.
 
 Per ogni fotogramma si segna il CENTRO della pallina con un clic (la lente in
 alto ingrandisce attorno al mouse). Regole:
@@ -11,12 +17,15 @@ alto ingrandisce attorno al mouse). Regole:
   - pallina coperta, fuori dall'immagine o non c'e': N (non visibile);
   - le palline FERME a terra non contano: si segna solo la pallina in gioco;
     se l'unica pallina visibile e' ferma, N;
+  - conta solo la pallina IN ARIA (palleggi prima del servizio, lancio, colpi,
+    volo, rimbalzi): pallina in mano o appoggiata alla racchetta prima del
+    servizio, o che rotola a terra a fine punto, N (regola del 12/10);
   - se non sei sicuro: S (incerto: il fotogramma non conta nel voto).
 
 Tasti:
     clic sinistro      segna la pallina
     frecce / IJKL      sposta il punto di 1 pixel
-    Invio o Spazio     conferma e passa al successivo
+    Invio o Spazio     conferma e passa al prossimo fotogramma ancora da fare
     N                  pallina non visibile (e passa al successivo)
     S                  incerto, salta (non conta)
     M                  pallina mossa si'/no
@@ -27,8 +36,9 @@ Tasti:
     U o Backspace      torna al fotogramma precedente della lista
     Esc o Q            salva ed esci (la volta dopo riparte da dove eri)
 
-Ogni conferma salva subito tracknet_finetune/test/etichette_test.csv (e lo copia
-su Drive in rf_coach_vision/tracknet_finetune/). Il pallino blu tenue e'
+Ogni conferma salva subito il CSV delle etichette (test/etichette_test.csv, oppure
+addestramento/etichette_addestramento.csv) e lo copia su Drive in
+rf_coach_vision/tracknet_finetune/. Il pallino blu tenue e'
 l'etichetta del fotogramma prima, se e' il fotogramma accanto: aiuta a trovare
 la pallina.
 """
@@ -87,7 +97,9 @@ def salva(percorso, etichette, lista):
     pd.DataFrame(righe, columns=COLONNE).to_csv(percorso, index=False)
     try:
         import sincronizza_drive
-        sincronizza_drive.copia(percorso, "tracknet_finetune")
+        drive = os.path.abspath(sincronizza_drive.CARTELLA_DRIVE) if sincronizza_drive.CARTELLA_DRIVE else ""
+        if not (drive and os.path.abspath(percorso).startswith(drive)):   # se e' gia' su Drive non serve
+            sincronizza_drive.copia(percorso, "tracknet_finetune")
     except Exception:
         pass
 
@@ -96,12 +108,16 @@ def main():
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--cartella", default=os.path.join(QUI, "test"),
                    help="cartella con lista_frame.csv e fotogrammi/")
-    p.add_argument("--etichette", default=None, help="default: <cartella>/etichette_test.csv")
+    p.add_argument("--etichette", default=None,
+                   help="default: <cartella>/etichette_<nome cartella>.csv (test -> etichette_test.csv)")
+    p.add_argument("--suggerimenti", action="store_true",
+                   help="suggerimenti accesi e punto gia' sul suggerimento (solo per l'addestramento)")
     a = p.parse_args()
     p_lista = os.path.join(a.cartella, "lista_frame.csv")
-    p_et = a.etichette or os.path.join(a.cartella, "etichette_test.csv")
+    nome_cartella = os.path.basename(os.path.normpath(a.cartella)) or "test"
+    p_et = a.etichette or os.path.join(a.cartella, f"etichette_{nome_cartella}.csv")
     if not os.path.exists(p_lista):
-        raise SystemExit(f"Manca {p_lista}: prima lancia scegli_frame_test.py")
+        raise SystemExit(f"Manca {p_lista}: prima lancia scegli_frame_test.py (o scegli_tratti_addestramento.py)")
     lista = pd.read_csv(p_lista).to_dict("records")
     etichette = carica_etichette(p_et)
     i = next((k for k, r in enumerate(lista) if (r["video"], int(r["frame"])) not in etichette), len(lista))
@@ -128,7 +144,8 @@ def main():
         return img
 
     corrente = None          # (indice) per cui sono caricati punto/mossa
-    punto, mossa, scarto, suggerimenti = None, 0, 0, False
+    finito_avvisato = False
+    punto, mossa, scarto, suggerimenti = None, 0, 0, bool(a.suggerimenti)
     while True:
         riga = lista[i]
         chiave = (riga["video"], int(riga["frame"]))
@@ -136,13 +153,20 @@ def main():
             vecchia = etichette.get(chiave)
             punto = (num(vecchia["x"]), num(vecchia["y"])) if vecchia is not None and int(vecchia["visibile"]) == 1 else None
             mossa = int(vecchia["mossa"]) if vecchia is not None else 0
+            if vecchia is None and a.suggerimenti:
+                # addestramento: si parte dal suggerimento (TrackNet, se no il colore); Invio lo conferma
+                for cx, cy in ((riga.get("sugg_tracknet_x"), riga.get("sugg_tracknet_y")),
+                               (riga.get("sugg_colore_x"), riga.get("sugg_colore_y"))):
+                    if num(cx) is not None and num(cy) is not None:
+                        punto = (num(cx), num(cy))
+                        break
             scarto, corrente = 0, i
         img = immagine(riga, scarto)
         if img is None:
             img = immagine(riga, 0)
             scarto = 0
         if img is None:
-            raise SystemExit(f"Manca l'immagine di {chiave}: rilancia scegli_frame_test.py")
+            raise SystemExit(f"Manca l'immagine di {chiave}: rilancia lo script che ha fatto la lista")
         h, w = img.shape[:2]
         s = min(1.0, 1500 / w, 850 / h)
         if stato["clic"] is not None:
@@ -232,10 +256,18 @@ def main():
             du, dv = FRECCE[k]
             punto = (punto[0] + du, punto[1] + dv)
         if avanti:
-            if i + 1 < len(lista):
-                i += 1
+            # avanti: al prossimo fotogramma ancora da fare (salta quelli gia' etichettati,
+            # per esempio quando si torna a correggere pochi fotogrammi); se sono tutti fatti, +1
+            da_fare = [k for k in range(len(lista)) if (lista[k]["video"], int(lista[k]["frame"])) not in etichette]
+            if da_fare:
+                dopo = [k for k in da_fare if k > i]
+                i = dopo[0] if dopo else da_fare[0]
             else:
-                print(f"Finito! {len(etichette)} fotogrammi etichettati in {p_et}")
+                if not finito_avvisato:
+                    print(f"Finito! {len(etichette)} fotogrammi etichettati in {p_et} (Esc per uscire)")
+                    finito_avvisato = True
+                if i + 1 < len(lista):
+                    i += 1
 
     cv2.destroyAllWindows()
     salva(p_et, etichette, lista)

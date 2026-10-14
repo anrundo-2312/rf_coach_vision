@@ -24,6 +24,9 @@ rilevatore della racchetta.)
 | `addestra.py` | Colab | il fine-tuning, con il codice originale di TrackNetV3 |
 | `valuta_tracknet.py` | Colab | il voto sul set di test: confronta pesi diversi sugli stessi fotogrammi |
 | `sguardo_veloce.py` | Colab | sguardo veloce senza etichette: pesi del badminton contro pesi nuovi sui nostri video (non è il voto) |
+| `scegli_tratti_addestramento.py` | PC | sceglie i tratti continui attorno ai colpi dei NOSTRI video (addestramento) e li estrae come immagini, con i suggerimenti |
+| `prepara_dataset_nostro.py` | PC | converte le nostre etichette di addestramento nel formato di TrackNetV3 e mette il tar su Drive |
+| `addestramento/lista_frame.csv`, `addestramento/etichette_addestramento.csv` | | i tratti di addestramento e le loro etichette (le immagini in `addestramento/fotogrammi/` no) |
 | `test/lista_frame.csv`, `test/etichette_test.csv` | | il set di test (vanno su GitHub; le immagini in `test/fotogrammi/` no) |
 
 ## Passi
@@ -59,6 +62,11 @@ Si segna il **centro** della pallina con un clic (la lente ingrandisce). Le rego
 - pallina coperta, fuori dall'immagine o assente: **N** (non visibile);
 - le palline **ferme** a terra non contano: solo la pallina in gioco (se c'è
   solo una pallina ferma: N);
+- (addestramento, dal 12/10) conta solo la pallina **in aria**: palleggi prima
+  del servizio, lancio, colpi, volo, rimbalzi. Pallina in mano o appoggiata
+  alla racchetta prima del servizio, o che rotola a terra a fine punto: **N**.
+  Come SwingVision, che analizza solo i punti giocati; e nelle lezioni il campo
+  è pieno di palline ferme o in mano che la rete non deve trovare;
 - dubbio: **S** (incerta: non conta nel voto).
 
 Invio o Spazio confermano; frecce (o IJKL) spostano il punto di 1 pixel; A/D
@@ -201,12 +209,70 @@ copia del video con il suffisso dei pesi (`nicola_matarese_trim_run1.mp4`, con
 la sua calibrazione), cosi' i risultati di oggi restano e si confrontano i due
 `_velocita.mp4` e `_velocita.csv`.
 
+## Addestrare con i NOSTRI video (dal 9 ottobre)
+
+Il dataset lo facciamo noi: la rete impara solo da fotogrammi con la pallina
+segnata, e per le nostre riprese non li ha fatti nessuno. Servono TRATTI
+CONTINUI (TrackNet guarda 8 fotogrammi di fila), non fotogrammi sparsi come
+nel test. Per il pilota: circa 30 colpi da 1 secondo (1.800 fotogrammi), da
+almeno 3 video o posizioni del telefono diverse.
+
+1. Analizzare il video con il programma (notebook principale, `PESI` vuoto):
+   servono `outputs/dati/<video>_velocita.csv` (i colpi) e `_tracking.csv`
+   (i suggerimenti). I video del test (nicola, djokovic, alcaraz, ex 60-150 s)
+   non si usano mai: lo script li rifiuta.
+2. Sul PC, i tratti e le immagini (0,5 s prima e 0,5 s dopo ogni colpo, al
+   massimo 10 colpi per video distribuiti lungo il video, piu' 1 tratto a caso):
+
+       python tracknet_finetune/scegli_tratti_addestramento.py --video nome.mp4
+
+   Si rilancia con altri video: le righe gia' fatte restano. I tratti con la
+   camera che si muove (piu' di 12 px tra inizio e fine, video girati a mano)
+   non vengono proposti: si passa ad altri colpi o ad altri tratti a caso
+   (`--max_spostamento`, `--tieni_mossi` per tenerli). Per avere meno
+   fotogrammi con la stessa riduzione per tutti i video, `--percentuale 65`
+   accorcia ogni tratto al 65% della durata attorno allo stesso contatto: i
+   colpi restano tutti (minimo circa 50% per i video a 30 fps). Oltre ai colpi
+   del giocatore vicino (`_velocita.csv`) prende anche quelli dell'avversario
+   da `_impatti.csv` (pallina lontana e piccola, il caso piu' difficile):
+   tratti `a<frame>`, motivo `colpo_lontano`; `--solo_vicini` per farne a meno.
+3. Etichettare, con i suggerimenti accesi e il punto gia' sul suggerimento
+   (Invio se e' giusto, clic se no, N se non c'e'; anche i fotogrammi senza
+   pallina vanno segnati, insegnano cosa NON e' la pallina):
+
+       python tracknet_finetune/etichetta_pallina.py --cartella tracknet_finetune/addestramento --suggerimenti
+
+   Un fotogramma incerto (S) spezza il tratto in due pezzi: usarlo poco.
+
+   **Un video alla volta, anche da computer diversi.** Con `--per_video` e
+   `--uscita` su Drive ogni video ha la sua cartella (lista, immagini, etichette
+   `etichette_<video>.csv`): si etichetta un video per volta da qualunque
+   computer con Drive, il codice del progetto (git pull) e Python con
+   `opencv-python` e `pandas`, e due computer non scrivono mai lo stesso file
+   (meglio non aprire la STESSA cartella da due computer insieme). Circa
+   200 MB di immagini per video su Drive; sull'altro computer conviene
+   rendere la cartella "disponibile offline" prima di iniziare.
+
+       python tracknet_finetune/scegli_tratti_addestramento.py --per_video --uscita "G:\Il mio Drive\rf_coach_vision\tracknet_finetune\addestramento" --video a.mp4 b.mp4
+       python tracknet_finetune/etichetta_pallina.py --suggerimenti --cartella "G:\Il mio Drive\rf_coach_vision\tracknet_finetune\addestramento\a"
+       python tracknet_finetune/prepara_dataset_nostro.py --cartella "G:\Il mio Drive\rf_coach_vision\tracknet_finetune\addestramento"
+4. Convertire (PC, CPU; ogni tratto = una clip, un tratto ogni 4 in
+   validazione; il tar va da solo su Drive in `tracknet_finetune/dati_nostri.tar`):
+
+       python tracknet_finetune/prepara_dataset_nostro.py
+
+5. Colab: `finetune_tracknet_run3.ipynb` (su Drive in `tracknet_finetune/`),
+   "Esegui tutto" dopo che Drive ha finito di caricare il tar. Fa solo run3:
+   scompatta il tar, prova, addestramento (`RUN = "run3"`, `LR = 1e-5`,
+   `EPOCHE = 10`, `DATI_RUN = DATI_NOSTRI`), voto sugli stessi 410 fotogrammi
+   e lettura del voto con il criterio di sempre, anche senza il video djokovic
+   del test (stesso campo di due video di addestramento). Le stesse cose si
+   fanno nel notebook generale: cella 6b, poi cella 8 con quelle impostazioni,
+   poi cella 10.
+
 ## Dopo
 
-1. Secondo fine-tuning con i nostri video (ex.mp4 tranne il pezzo del test,
-   Giorgio, palline sparse, video nuovi), etichettati con lo stesso strumento:
-   serve una lista di fotogrammi di addestramento (tratti continui attorno ai
-   colpi) e un convertitore nel formato di TrackNetV3. Voto sempre sugli
-   stessi 410 fotogrammi.
-2. Se un giorno un voto migliora: integrazione (pesi da impostazione gia'
+1. Se il pilota muove il voto nella direzione giusta: 100-150 colpi
+   (6.000-9.000 fotogrammi) e addestramento vero.
+2. Se un voto supera il criterio: integrazione (pesi da impostazione gia'
    pronta, poi A/B sui video di riferimento).
