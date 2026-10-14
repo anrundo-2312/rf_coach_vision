@@ -30,3 +30,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Dati di addestramento di TrackNet: pesanti, stanno su Drive (tracknet_finetune/LEGGIMI.md)
+tracknet_finetune/dati_nostri/
+tracknet_finetune/addestramento/
+
+# Cartella locale di file da buttare
+_da_cancellare/
