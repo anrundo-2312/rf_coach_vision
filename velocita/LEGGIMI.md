@@ -130,6 +130,10 @@ con il campo della calibrazione disegnato in verde:
   video"); un numero = mostra quel fotogramma (se il giocatore copre le
   righe). La calibrazione si salva anche su Drive in `calibrazioni/` e vale
   per le sessioni successive.
+- la risposta si da' con i pulsanti che compaiono sotto l'immagine (dal 15
+  ottobre): prima si scriveva `s` / `n` / un numero nella casella di
+  `input()`, che Colab a volte non mostrava finche' non si ricaricava la
+  pagina. L'immagine del campo arriva alla pagina gia' ridotta a 900 px.
 `CALIBRA = True` calibra comunque, `CALIBRA = False` non chiede niente
 (calibrazione del video se c'e', se no la standard). Prima la calibrazione era
 nella cella 7c, dopo l'analisi: per sapere se serviva bisognava aspettare la
