@@ -227,7 +227,17 @@ salvata, senza finestre (anche su Colab).
    video alcaraz, al dritto del frame 567, prima seguiva una borsa gialla.
    Prima si tolgono i punti di TrackNet che sono palline ferme in campo, e la
    traccia parte dal primo punto di TrackNet confermato da un altro vicino
-   (vedi "Palline ferme in campo").
+   (vedi "Palline ferme in campo"). Se la traccia si arrende (8 frame senza
+   pallina) prima della fine della finestra, dal 15 ottobre riparte dal primo
+   punto di TrackNet confermato dopo l'ultimo trovato (`RIPARTI`): con le
+   finestre lunghe (2-6 s: palleggi, montaggi, piu' colpi nella stessa
+   finestra) partiva dalla pallina dell'avversario e si fermava a meta'
+   campo, e il colpo del giocatore restava senza traccia (draper_djokovic,
+   jimmy_manson_2). Le righe del primo tratto restano come prima; poi i
+   contatti si cercano sull'unione dei tratti e si aggiungono solo quelli ad
+   almeno 20 frame da una riga gia' scritta, cosi' la pallina che ricompare
+   dietro il corpo dopo un colpo coperto (rovescio di Nicola) non diventa un
+   contatto in piu'. Nicola e Djokovic identici.
 3. **Contatto.** Cambio brusco della direzione della pallina (3 frame prima
    contro 3 dopo) con la pallina entro 0,6 altezze del giocatore da un polso,
    e pallina che DOPO si allontana veloce. L'ultima condizione scarta il
@@ -362,6 +372,10 @@ stesso modello del calcolo normale) che la spiega.
 2. Contatto: si risale dal rimbalzo lungo i punti di TrackNet finche' sono
    continui e la pallina non cambia bruscamente velocita' o direzione; il
    primo punto e' la pallina appena colpita, il contatto e' mezzo frame prima.
+   Se al colpo il giocatore e' fuori dall'immagine (niente caviglie ne'
+   riquadro) la posizione a terra non c'e' e la riga si salta (15 ottobre):
+   prima il file si fermava con un errore e non scriveva niente per tutto il
+   video, zero rimbalzi e zero dentro/fuori (jimmy_manson_2 a 24,8 s).
 3. Velocita' e direzione dalla traiettoria giocatore -> rimbalzo; la
    direzione viene dal rimbalzo misurato.
 

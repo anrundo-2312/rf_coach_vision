@@ -35,6 +35,22 @@ bassa) TrackNet metteva li' la pallina proprio prima dei colpi. La traccia poi
 parte dal primo punto di TrackNet confermato da un altro punto vicino (entro 2
 frame), non da un punto isolato.
 
+RIPARTENZA (15 ottobre, in velocita_uscita.py: RIPARTI): la traccia parte dal
+primo punto di TrackNet confermato della finestra e si arrende dopo BUCO_MAX
+frame senza pallina. Quando la finestra della posa e' lunga (2-6 s: palleggi,
+montaggi con tagli) parte dalla pallina ancora dalla parte dell'avversario e
+si arrende a meta' campo, dove TrackNet la perde per 10-20 frame perche' e'
+piccola; il colpo del giocatore, che TrackNet vede bene, resta senza traccia
+(draper_djokovic: rovescio a 4,7 s e dritto a 7,6 s; jimmy_manson_2). Ora
+velocita_uscita.py (ripartenze), se la traccia si ferma prima della fine della
+finestra, la fa ripartire dal primo punto di TrackNet confermato dopo l'ultimo
+trovato (primo_confermato), finche' la finestra non e' coperta. Le righe del
+primo tratto ("contatto non visibile" per direzione_nascosta.py, solo
+direzione) restano come prima; i contatti cercati sull'unione dei tratti si
+aggiungono solo ad almeno 20 frame da una riga gia' scritta, cosi' la pallina
+che ricompare dietro il corpo dopo un colpo coperto (rovescio di Nicola) non
+diventa un contatto in piu'.
+
 Ricerca ESTESA (esteso=True), usata da velocita_uscita.py solo per la
 DIREZIONE dei colpi che la ricerca normale non riesce a misurare:
   - la pallina "strisciata" dal mosso al colpo (macchia allungata fino a 5
@@ -198,6 +214,19 @@ def tracknet_fermi(video, primo, ultimo, tracknet, altezze, fps, a_terra=None):
     return fermi
 
 
+def confermato(tracknet, f, altezze):
+    """Il punto di TrackNet al frame f e' confermato da un altro punto entro 2 frame e 0,3 altezze del
+    giocatore: un punto isolato e' spesso un falso rilevamento."""
+    h = altezze.get(f) or altezze.get(f - 1) or 300.0
+    return any(g in tracknet and np.hypot(tracknet[g][0] - tracknet[f][0], tracknet[g][1] - tracknet[f][1]) <= 0.3 * h
+               for g in (f - 2, f - 1, f + 1, f + 2))
+
+
+def primo_confermato(tracknet, da, a, altezze):
+    """Primo frame tra da e a con un punto di TrackNet confermato (None se non c'e')."""
+    return next((f for f in sorted(tracknet) if da <= f <= a and confermato(tracknet, f, altezze)), None)
+
+
 def segui(video, primo, ultimo, tracknet, altezze, seme=None, esteso=False):
     """
     Traccia della pallina nei frame primo..ultimo (numerati da 1 come nel tracking CSV).
@@ -215,11 +244,7 @@ def segui(video, primo, ultimo, tracknet, altezze, seme=None, esteso=False):
             return {}
         # si parte dal primo punto di TrackNet confermato da un altro punto vicino (entro 2 frame e
         # 0,3 altezze del giocatore): un punto isolato e' spesso un falso rilevamento
-        def confermato(f):
-            h = altezze.get(f) or altezze.get(f - 1) or 300.0
-            return any(g in tracknet and np.hypot(tracknet[g][0] - tracknet[f][0], tracknet[g][1] - tracknet[f][1]) <= 0.3 * h
-                       for g in (f - 2, f - 1, f + 1, f + 2))
-        f0 = next((f for f in dentro if confermato(f)), dentro[0])
+        f0 = primo_confermato(tracknet, primo, ultimo, altezze) or dentro[0]
         seme = (f0, *tracknet[f0])
     f0, sx, sy = seme
     traccia = {f0: (sx, sy, "tracknet" if f0 in tracknet else "locale")}

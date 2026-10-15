@@ -30,7 +30,10 @@ Passi:
    Prima si tolgono i punti di TrackNet che sono palline ferme in campo
    (palla_locale.tracknet_fermi: la stessa pallina c'e' anche 0,4-0,6 s prima
    e dopo), e la traccia parte dal primo punto di TrackNet confermato da un
-   altro vicino, non da un punto isolato.
+   altro vicino, non da un punto isolato. Se la traccia si arrende prima
+   della fine della finestra, riparte dal prossimo punto di TrackNet
+   confermato (RIPARTI, 15 ottobre): i tratti ripartiti aggiungono solo i
+   loro contatti.
 
 3. CONTATTO. Cambio brusco del vettore spostamento della pallina (3 frame
    prima contro 3 frame dopo), con la pallina vicina a un polso e che DOPO si
@@ -116,6 +119,17 @@ FINESTRA_LUNGA_S = 3.0
 # Il contatto trovato dalla ricerca estesa sostituisce la riga "contatto non visibile" della stessa finestra
 # anche se e' a piu' di 15 frame (era una seconda scritta senza dati sullo stesso colpo). False = come prima.
 STESSA_FINESTRA = True
+
+# Ripartenza della traccia (15 ottobre). La ricerca della pallina (palla_locale.segui) parte dal primo punto
+# di TrackNet della finestra e si arrende dopo 8 frame senza pallina. Con le finestre lunghe della posa (2-6 s:
+# palleggi, montaggi con tagli, piu' colpi nella stessa finestra) partiva dalla pallina dell'avversario, si
+# fermava a meta' campo e il colpo del giocatore restava senza traccia (draper_djokovic, jimmy_manson_2). Ora,
+# se la traccia si ferma prima della fine della finestra, riparte dal prossimo punto di TrackNet confermato,
+# finche' la finestra non e' coperta. Le righe del primo tratto (contatto, "contatto non visibile", solo
+# direzione) restano come prima; poi si cercano i contatti sull'unione dei tratti e si aggiungono solo quelli
+# ad almeno DISTANZA_MINIMA frame dalle righe gia' scritte: la pallina che ricompare dietro il corpo dopo un
+# colpo coperto (rovescio di Nicola) non diventa un contatto in piu'. Nicola, Djokovic identici. False = come prima.
+RIPARTI = True
 
 # Contatto
 PASSI = 3                   # frame prima/dopo per la direzione della pallina
@@ -565,6 +579,25 @@ def misura(t, traccia, f_contatto, cam):
     return r, piedi, angolo, x_arrivo, direzione, rimbalzo, usati
 
 
+def ripartenze(video, primo, ultimo, tracknet, altezze, traccia):
+    """
+    Tratti di traccia in piu' quando segui si e' arreso prima della fine della finestra (vedi RIPARTI):
+    ognuno riparte dal primo punto di TrackNet confermato dopo la fine del tratto precedente. Lista di
+    tracce, anche vuota.
+    """
+    tratti, fine = [], max(traccia)
+    while fine < ultimo:
+        prossimo = palla_locale.primo_confermato(tracknet, fine + 1, ultimo, altezze)
+        if prossimo is None:
+            break
+        nuova = palla_locale.segui(video, prossimo, ultimo, tracknet, altezze, seme=(prossimo, *tracknet[prossimo]))
+        if not nuova or max(nuova) <= fine:
+            break
+        tratti.append(nuova)
+        fine = max(nuova)
+    return tratti
+
+
 def pallina_vicina(traccia, t):
     """Quanti punti della traccia hanno la pallina vicina a un polso del giocatore."""
     n = 0
@@ -701,12 +734,16 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         tn = {f: p for f, p in tracknet.items() if f not in fermi}
         ferme.update({f: tracknet[f] for f in fermi})
         traccia = palla_locale.segui(video, primo, ultimo, tn, altezze)
+        riprese = ripartenze(video, primo, ultimo, tn, altezze, traccia) if RIPARTI and traccia else []
         contatti = trova_contatti(traccia, t) if traccia else []
         if verbose:
             print(f"finestra {a}-{b}: pallina in {len(traccia)} frame "
                   f"({sum(1 for v in traccia.values() if v[2] == 'locale')} dal rilevatore locale), contatti {contatti}"
-                  + (f", {len(fermi)} punti di TrackNet su palline ferme tolti" if fermi else ""))
-        for fc in contatti:
+                  + (f", {len(fermi)} punti di TrackNet su palline ferme tolti" if fermi else "")
+                  + (f", traccia ripartita {len(riprese)} volte: " + ", ".join(f"{min(s)}-{max(s)}" for s in riprese)
+                     if riprese else ""))
+
+        def aggiungi_contatto(traccia, fc):
             colpo = colpo_al_contatto(classi, fc, traccia, t, a, b)
             riga = {"frame": fc, "tempo_s": round(float(t["tempo"][fc - 1]), 3), "colpo": colpo,
                     "calibrazione": fonte}
@@ -718,7 +755,7 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
                     riga.update({"punti_usati": r["n_points"], "errore_px": round(r["rms_px"], 1),
                                  "nota": "misura scartata: " + "; ".join(motivi)})
                     colpi.append(riga)
-                    continue
+                    return
                 partenza = r["_partenza"]
                 if colpo == "servizio":
                     direzione = classifica_servizio(float(piedi[0]), rimbalzo)
@@ -739,6 +776,9 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             except (ValueError, IndexError, np.linalg.LinAlgError) as e:
                 riga.update({"nota": f"velocita' non calcolabile: {e}"})
             colpi.append(riga)
+
+        for fc in contatti:
+            aggiungi_contatto(traccia, fc)
         if not contatti and pallina_vicina(traccia, t) >= 3:
             # la posa dice che c'e' un colpo e la pallina arriva al giocatore, ma attorno
             # al contatto non si vede (coperta dal corpo o persa): colpo senza velocita'.
@@ -758,6 +798,18 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         if not any(r.get("velocita_uscita_kmh", "") != "" for r in colpi[inizio_righe:]):
             solo_direzione(video, t, classi, a, b, primo, ultimo, tn, altezze, cam, fonte,
                            altezza_img, colpi, inizio_righe, verbose)
+        # tratti ripartiti (RIPARTI): i contatti sull'unione dei tratti, aggiunti dopo le righe del primo tratto
+        # (che restano come prima) se stanno ad almeno DISTANZA_MINIMA frame da una riga gia' scritta
+        if riprese:
+            unione = dict(traccia)
+            for seg in riprese:
+                unione.update(seg)
+            nuovi = [fc for fc in trova_contatti(unione, t)
+                     if all(abs(fc - int(r["frame"])) >= DISTANZA_MINIMA for r in colpi[inizio_righe:])]
+            if verbose and nuovi:
+                print(f"  tratti ripartiti: contatti in piu' {nuovi}")
+            for fc in nuovi:
+                aggiungi_contatto(unione, fc)
     # il filtro anche fino a FERME_DOPO_S dopo ogni colpo: qui non cambia niente (le righe sono gia' fatte),
     # serve a direzione_nascosta.py e velocita_rimbalzo.py, che leggono i punti tolti dal file
     dopo = sorted({f for r in colpi for f in range(int(r["frame"]), min(n, int(r["frame"]) + int(FERME_DOPO_S * t["fps"])) + 1)}

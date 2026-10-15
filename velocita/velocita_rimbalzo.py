@@ -57,6 +57,11 @@ Passi, per ogni colpo senza velocita':
    al corpo, esterno) viene dal rimbalzo misurato e sostituisce quella
    ricavata dai punti in volo.
 
+Se il giocatore e' fuori dall'immagine al colpo (posa senza caviglie ne'
+riquadro: jimmy_manson_2 a 24,8 s) la posizione a terra non c'e' e quella riga
+si salta (15 ottobre). Prima il calcolo si fermava con un errore e il file non
+scriveva NIENTE per tutto il video: nessun rimbalzo, nessun dentro/fuori.
+
 Se TrackNet non vede il rimbalzo si provano altri due modi, in quest'ordine:
 4. COLORE NEL CAMPO LONTANO: nei fotogrammi dopo il colpo in cui TrackNet ha
    perso la pallina si cercano macchie gialle piccole (3-120 px quadrati a
@@ -413,6 +418,8 @@ def stima(t, tn, altezze, cam, riga):
         return None
     f_contatto = max(1, s - 1)
     piedi = vu.piedi_a_terra(t, f_contatto, cam)
+    if not np.all(np.isfinite(piedi)):
+        return None     # giocatore fuori dall'immagine: niente posizione a terra, la riga si salta (vedi in testa)
     x0, partenza_da = partenza_stima(t, cam, riga, piedi, {f: tn[f] for f in range(s, fb + 1) if f in tn}, t_contatto)
     p0 = np.array([x0, piedi[1], ALTEZZA_CONTATTO.get(riga["colpo"], 1.0)])
     arrivo = np.array([terra[0], terra[1], 0.0])
@@ -456,6 +463,8 @@ def velocita_da_volo(t, cam, riga, f_c, t_rimbalzo, terra, punti=None):
     if not VOLO_S[0] <= volo <= VOLO_S[1]:
         return None
     piedi = vu.piedi_a_terra(t, max(1, int(f_c)), cam)
+    if not np.all(np.isfinite(piedi)):
+        return None     # giocatore fuori dall'immagine: niente posizione a terra, la riga si salta (vedi in testa)
     partenza = partenza_stima(t, cam, riga, piedi, punti, t_c)
     p0 = np.array([partenza[0], piedi[1], ALTEZZA_CONTATTO.get(riga["colpo"], 1.0)])
     arrivo = np.array([terra[0], terra[1], 0.0])

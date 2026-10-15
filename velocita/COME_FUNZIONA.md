@@ -314,7 +314,7 @@ Il rilevatore misura anche quanto è grande la pallina nell'immagine, e questo p
 - Le soglie di colore sono state provate solo su **terra rossa e cemento blu**: su altri campi (erba, cemento verde) vanno verificate.
 - Oggetti dello **stesso colore** vicino alla pallina (magliette lime, scritte, palline a terra) possono ingannarlo. La finestra piccola e la previsione riducono il rischio ma non lo eliminano.
 - Se la pallina è **coperta** dal giocatore o dalla racchetta non c'è niente da trovare, come nel rovescio di Nicola.
-- Se la pallina resta coperta per più di 8 frame di fila, il rilevatore si ferma.
+- Se la pallina resta coperta per più di 8 frame di fila, il rilevatore si ferma. Dal 15 ottobre `velocita_uscita.py` lo fa ripartire dal punto di TrackNet successivo (`RIPARTI`): con le finestre lunghe della posa partiva dalla pallina dell'avversario, si fermava a metà campo e il colpo del giocatore restava senza traccia (draper_djokovic, jimmy_manson_2). Le righe del primo tratto restano come prima; i contatti trovati sull'unione dei tratti si aggiungono solo se stanno ad almeno 20 frame da una riga già scritta.
 
 ---
 
