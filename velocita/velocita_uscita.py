@@ -50,6 +50,9 @@ Passi:
    3D si ricavano i km/h e l'angolo rispetto alle righe laterali. Se il video
    e' una conversione con fotogrammi ripetuti (es. 50 -> 60 fps), si usano
    gli istanti veri dei fotogrammi (fotogrammi.py); altrimenti niente cambia.
+   La calibrazione e' quella corretta per il fotogramma del contatto se la
+   camera si e' spostata (camera.py, 16/10: colonne camera e camera_px; con
+   spostamento "eccessiva" nessun numero, nota "camera mossa").
 
 5. LUNGO LINEA / INCROCIATO / CENTRALE, da dove parte il colpo e da dove
    arriverebbe la pallina nel campo avversario (vedi classifica_direzione).
@@ -62,10 +65,11 @@ Passi:
 6. CONTROLLO DEL RISULTATO. Il calcolo non cambia, si decide solo se
    mostrarlo: se la traiettoria 3D non spiega i punti della pallina (errore
    sopra 6 px, riportato a 1080p) oppure il risultato non e' da tennis
-   (velocita' fuori da 30-250 km/h, oppure un angolo oltre il limite: dal punto
-   di contatto l'angolo verso la riga laterale del singolo, 0,5 m dopo la rete,
-   piu' 10 gradi, mai sotto 45; servizio escluso), velocita' e direzione non si
-   scrivono e la nota dice il perche'.
+   (velocita' fuori da 30-250 km/h o sopra il tetto del tipo di colpo,
+   TETTO_KMH: dritto e rovescio 155, servizio 240; oppure un angolo oltre il
+   limite: dal punto di contatto l'angolo verso la riga laterale del singolo,
+   0,5 m dopo la rete, piu' 10 gradi, mai sotto 45; servizio escluso),
+   velocita' e direzione non si scrivono e la nota dice il perche'.
    Succede quando i punti non sono la pallina colpita (un'altra pallina, la
    racchetta gialla, un oggetto): vedi controlla_risultato.
 
@@ -86,7 +90,10 @@ secondi, al picco di velocita' del polso (picco_polso).
 
 Dopo questo file si eseguono direzione_nascosta.py (direzione dei colpi con il
 contatto coperto) e velocita_rimbalzo.py (velocita' stimata dal rimbalzo per i
-colpi ancora senza km/h).
+colpi ancora senza km/h; dal 16/10 anche il rimbalzo trovato dentro il calcolo
+delle velocita' misurate, RIMBALZO_NEL_CALCOLO: la colonna velocita_fonte dice
+da dove viene ogni velocita', FONTE_*, e velocita_libera_kmh tiene la misura
+senza rimbalzo quando quella con il rimbalzo la sostituisce).
 """
 
 import argparse
@@ -105,6 +112,7 @@ from rf_ball_exit_speed import exit_speed, ground_crossing, ground_from_pixel  #
 from calibra_campo import camera_da_json, carica_per_video, disegna_controllo, leggi_fotogramma  # noqa: E402
 import palla_locale  # noqa: E402
 import fotogrammi  # noqa: E402
+import camera  # noqa: E402
 
 CENTRO_X = 5.485            # riga centrale del campo (m)
 
@@ -187,7 +195,36 @@ ERRORE_MAX_1080 = 6.0       # px (riportati a 1080p): oltre, la traiettoria non 
 INSIDE_M = 1.0              # piedi almeno 1 m oltre la riga centrale, dalla parte del rovescio
                             # arrivo: nel terzo laterale del campo avversario (FASCIA_CENTRO, regola dell'utente)
 SEPARAZIONE_MANO = 0.3      # per capire la mano: contatto ad almeno 0,3 m di lato dai piedi
-VELOCITA_PLAUSIBILE = (30, 250)  # km/h
+VELOCITA_PLAUSIBILE = (30, 250)  # km/h (il tetto generale; sotto quelli per tipo di colpo)
+# Tetti per tipo di colpo (Andrea, 16/10): un dritto o un rovescio sopra 155 km/h e un servizio sopra 240 non
+# sono credibili (sinner_final_test: dritto a 193 km/h su un colpo lungo la linea di vista della camera, dove la
+# profondita' e' mal condizionata). Sopra il tetto la misura non si mostra, nota "fuori scala".
+TETTO_KMH = {"dritto": 155, "rovescio": 155, "servizio": 240}
+# Il rimbalzo trovato nel calcolo (16/10, velocita_rimbalzo.py passo 8): per i colpi con la velocita' misurata E il
+# rimbalzo trovato il calcolo si rifa' con il rimbalzo come vincolo di posizione (entro 0,25 m) e di tempo di volo
+# (entro 1 frame). Se il risultato passa gli stessi controlli (errore, tetti, angolo) e' quello mostrato; quello
+# senza rimbalzo resta nella colonna velocita_libera_kmh.
+RIMBALZO_NEL_CALCOLO = True
+TOLLERANZA_RIMBALZO = (0.25, 1.0)   # (m, frame): quanto pesa il rimbalzo nel calcolo
+# Il risultato con il rimbalzo vale solo se la traiettoria trovata tocca davvero terra al rimbalzo trovato: entro
+# RIMBALZO_COMPATIBILE (m, secondi; 0,1 s = 6 frame a 60 fps, 3 a 30: il frame del rimbalzo di TrackNet e' il
+# punto piu' basso visto, 1-2 frame dopo il tocco, piu' un po' di rotazione). Il modello non ha la rotazione: un
+# dritto in forte topspin scende prima di una pallina senza rotazione, il calcolo non riesce a passare per il
+# rimbalzo (zverev_djokovic, dritto 65: manca di 2,3 m e 11 frame = 0,18 s; sinner: 7-13 frame) e in quel caso
+# resta la misura senza rimbalzo, con la nota. Con poca rotazione passa (Nicola, servizio: 0,5 m e 0,7 frame;
+# jimmy_mnason_final_test 237: 0,3 m e 5 frame, dove la misura senza rimbalzo era 103 con media del volo 123).
+RIMBALZO_COMPATIBILE = (0.6, 0.10)
+# Da dove viene la velocita' (colonna velocita_fonte), dalla piu' sicura alla meno:
+FONTE_CON_RIMBALZO = "misurata con rimbalzo"             # punti dopo il contatto + rimbalzo trovato nel calcolo
+FONTE_MISURATA = "misurata"                              # punti dopo il contatto (il calcolo di sempre)
+FONTE_CONTATTO_DAL_RIMBALZO = "misurata, contatto dal rimbalzo"  # contatto coperto: punti in uscita + rimbalzo
+FONTE_STIMATA = "stimata dal rimbalzo"                   # solo partenza e rimbalzo (TrackNet o colore)
+FONTE_RICOSTRUITA = "stimata, rimbalzo ricostruito"      # come sopra, con il rimbalzo ricostruito
+FONTE_CIRCA = ", circa"                                  # aggiunto se la media del volo e' troppo bassa (RAPPORTO_MEDIA_MIN)
+# La media fino al rimbalzo (distanza a terra / tempo di volo) e' sempre sotto la velocita' d'uscita, ma non di
+# tanto: su un colpo buono il rapporto e' 0,75-0,9. Sotto RAPPORTO_MEDIA_MIN la misura d'uscita e' gonfiata
+# (sinner_final_test: 131 km/h con media 58) e si segna "circa" nella fonte e nella nota.
+RAPPORTO_MEDIA_MIN = 0.65
 # Palline ferme (palla_locale.tracknet_fermi): si guardano solo i punti che, portati a terra,
 # cadono in campo o attorno (fino a ~8-10 m oltre le righe); sopra la recinzione no
 FERME_X = (-7.0, 18.0)
@@ -557,7 +594,14 @@ def istante(t, f):
     return f / t["fps"] if tr is None else tr["k"][int(f)] / tr["fps"]
 
 
-def misura(t, traccia, f_contatto, cam):
+def misura(t, traccia, f_contatto, cam, rimbalzo=None, contatto=None):
+    """
+    La misura di un colpo: exit_speed sui punti della traccia da 8 frame prima a DURATA_DOPO_S dopo il contatto.
+    rimbalzo = (frame, x_m, y_m): il rimbalzo trovato (velocita_rimbalzo.py) entra nel calcolo come vincolo di
+      posizione e di tempo di volo (RIMBALZO_NEL_CALCOLO; rf_ball_exit_speed.exit_speed, bounce_xy).
+    contatto = (istante_s, pixel): contatto coperto, dato dal chiamante (velocita_rimbalzo.stima: mezzo frame
+      prima del primo punto in uscita) al posto di quello trovato dalle due curve prima e dopo.
+    """
     fps = t["fps"]
     n_dopo = max(4, int(round(DURATA_DOPO_S * fps)))
     fs = [f for f in sorted(traccia) if f_contatto - 8 <= f <= f_contatto + n_dopo]
@@ -568,14 +612,23 @@ def misura(t, traccia, f_contatto, cam):
     # istanti veri se il video ha fotogrammi ripetuti (altrimenti tutto come prima)
     f_fit, fps_fit, tieni = tempi_fit(t, f_arr)
     n_fit = n_dopo if fps_fit == fps else int(round(n_dopo * fps_fit / fps))
+    extra = {}
+    if rimbalzo is not None:
+        fb, xb, yb = rimbalzo
+        tr = t.get("tempi")
+        extra.update(bounce_frame=int(fb) if tr is None else int(tr["k"][int(fb)]), bounce_xy=(float(xb), float(yb)),
+                     bounce_tol=TOLLERANZA_RIMBALZO)
+    if contatto is not None:
+        extra["impact"] = contatto
     r = exit_speed(p_arr[tieni], f_fit, fps_fit, cam, int(tieni[:ci].sum()), impact_mode="visual", n_frames=n_fit,
                    player_ground_xy=piedi, return_debug=True, forward=True,
-                   depth_tol=TOLLERANZA_PROFONDITA)
+                   depth_tol=TOLLERANZA_PROFONDITA, **extra)
     r["_partenza"] = punto_di_partenza(t, cam, piedi, contatto=r["impact_xyz_m"])
     angolo, x_arrivo, direzione = classifica_direzione(r["_partenza"][0], r["impact_xyz_m"], r["v0_ms"])
     # rimbalzo previsto (gravita' + aria, senza rotazione): usato solo per il servizio
     _, rimbalzo = ground_crossing(r["impact_xyz_m"], r["v0_ms"])
     usati = [f for f in fs if f_contatto < f <= f_contatto + n_dopo]
+    r["_traccia"] = [(int(f), float(x), float(y)) for f, (x, y) in zip(fs, p_arr)]   # per rifare il calcolo con il rimbalzo
     return r, piedi, angolo, x_arrivo, direzione, rimbalzo, usati
 
 
@@ -685,6 +738,8 @@ def controlla_risultato(r, angolo, colpo, altezza_img, frame=None, verbose=False
     lo, hi = VELOCITA_PLAUSIBILE
     if not lo <= r["exit_kmh"] <= hi:
         motivi.append(f"velocita' {r['exit_kmh']:.0f} km/h fuori da {lo}-{hi}")
+    elif r["exit_kmh"] > TETTO_KMH.get(colpo, hi):
+        motivi.append(f"velocita' {r['exit_kmh']:.0f} km/h fuori scala per un {colpo} (tetto {TETTO_KMH[colpo]})")
     limite = None
     if colpo != "servizio":
         limite = limite_angolo(r["impact_xyz_m"], angolo)
@@ -705,15 +760,20 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     classi = leggi_colpi(os.path.join(cartella_dati, nome + "_colpi.csv"))
     cal, fonte = carica_per_video(video, calibrazione)
     cam = camera_da_json(cal)
-    # controllo: il campo della calibrazione usata sopra il primo fotogramma
+    # la calibrazione che segue la camera (camera.py): spostamento dell'immagine per fotogramma
+    tab_cam = camera.tabella(video, cartella_dati, cal, t["fps"], verbose)
+    # controllo: il campo della calibrazione usata sopra il primo fotogramma (corretta per quel fotogramma)
     frame, _, _ = leggi_fotogramma(video, 0)
     altezza_img = frame.shape[0]
     if fonte == "standard":
         testo = "calibrazione STANDARD: le righe verdi devono cadere su quelle vere"
     else:
         testo = f"calibrazione del video (errore medio {cal['errore_rms_px']:.1f} px)"
+    if tab_cam:
+        dx1, dy1, _ = camera.spostamento(tab_cam, 1)
+        testo += f"; camera al 1o fotogramma spostata di ({dx1:+.0f}; {dy1:+.0f}) px, corretta"
     controllo = os.path.join(cartella_dati, nome + "_campo.jpg")
-    cv2.imwrite(controllo, disegna_controllo(frame, cal, {}, testo))
+    cv2.imwrite(controllo, disegna_controllo(frame, camera.cal_al_frame(cal, tab_cam, 1), {}, testo))
     if verbose:
         print(f"Calibrazione: {'standard' if fonte == 'standard' else 'del video'}. Controllo: {controllo}")
 
@@ -745,15 +805,23 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
 
         def aggiungi_contatto(traccia, fc):
             colpo = colpo_al_contatto(classi, fc, traccia, t, a, b)
+            liv, px_cam = camera.livello(tab_cam, fc, altezza_img)
             riga = {"frame": fc, "tempo_s": round(float(t["tempo"][fc - 1]), 3), "colpo": colpo,
-                    "calibrazione": fonte}
+                    "calibrazione": fonte, "camera": liv, "camera_px": round(px_cam)}
+            if liv == "eccessiva":
+                # camera.py: spostamento troppo grande rispetto alla calibrazione, nessun numero
+                riga["nota"] = f"camera mossa ({px_cam:.0f} px a 1080p rispetto alla calibrazione): misura non mostrata"
+                colpi.append(riga)
+                return
+            cam_f = camera.camera_al_frame(cam, tab_cam, fc)
             try:
-                r, piedi, angolo, x_arr, direzione, rimbalzo, usati = misura(t, traccia, fc, cam)
+                r, piedi, angolo, x_arr, direzione, rimbalzo, usati = misura(t, traccia, fc, cam_f)
                 motivi = controlla_risultato(r, angolo, colpo, altezza_img, fc, verbose)
                 if motivi:
                     # calcolo fatto ma non credibile: niente velocita' ne' direzione
                     riga.update({"punti_usati": r["n_points"], "errore_px": round(r["rms_px"], 1),
-                                 "nota": "misura scartata: " + "; ".join(motivi)})
+                                 "nota": "misura scartata: " + "; ".join(motivi),
+                                 "_libera_kmh": round(r["exit_kmh"]), "_traccia": r["_traccia"]})
                     colpi.append(riga)
                     return
                 partenza = r["_partenza"]
@@ -764,7 +832,7 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
                                  "rimbalzo_y_m": round(float(rimbalzo[1]), 2)})
                 riga.update({"partenza_da": partenza[1], "_partenza_x_m": round(partenza[0], 2)})
                 riga.update({
-                    "velocita_uscita_kmh": round(r["exit_kmh"]),
+                    "velocita_uscita_kmh": round(r["exit_kmh"]), "velocita_fonte": FONTE_MISURATA,
                     "direzione": direzione,
                     "angolo_gradi": round(angolo, 1),
                     "giocatore_x_m": round(float(piedi[0]), 2), "arrivo_x_m": round(x_arr, 2),
@@ -772,7 +840,8 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
                     "contatto_y_m": round(float(r["impact_xyz_m"][1]), 2),
                     "contatto_z_m": round(float(r["impact_xyz_m"][2]), 2),
                     "punti_usati": r["n_points"], "errore_px": round(r["rms_px"], 1), "nota": "",
-                    "_punti": [(f, *traccia[f][:2]) for f in usati]})
+                    "_punti": [(f, *traccia[f][:2]) for f in usati],
+                    "_traccia": r["_traccia"]})      # per il calcolo con il rimbalzo (velocita_rimbalzo.py, passo 8)
             except (ValueError, IndexError, np.linalg.LinAlgError) as e:
                 riga.update({"nota": f"velocita' non calcolabile: {e}"})
             colpi.append(riga)
@@ -793,11 +862,13 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
                 if verbose:
                     print(f"  finestra lunga {(b - a) / t['fps']:.1f} s: contatto non visibile al picco del polso, "
                           f"frame {picco} {colpo}")
+            liv, px_cam = camera.livello(tab_cam, fine, altezza_img)
             colpi.append({"frame": fine, "tempo_s": round(float(t["tempo"][fine - 1]), 3), "colpo": colpo,
-                          "calibrazione": fonte, "nota": "contatto non visibile: pallina coperta o persa"})
+                          "calibrazione": fonte, "camera": liv, "camera_px": round(px_cam),
+                          "nota": "contatto non visibile: pallina coperta o persa"})
         if not any(r.get("velocita_uscita_kmh", "") != "" for r in colpi[inizio_righe:]):
             solo_direzione(video, t, classi, a, b, primo, ultimo, tn, altezze, cam, fonte,
-                           altezza_img, colpi, inizio_righe, verbose)
+                           altezza_img, colpi, inizio_righe, verbose, tab_cam)
         # tratti ripartiti (RIPARTI): i contatti sull'unione dei tratti, aggiunti dopo le righe del primo tratto
         # (che restano come prima) se stanno ad almeno DISTANZA_MINIMA frame da una riga gia' scritta
         if riprese:
@@ -880,7 +951,7 @@ def seme_lancio(t, tracknet, primo, ultimo):
 
 
 def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam, fonte, altezza_img,
-                   colpi, inizio_righe, verbose):
+                   colpi, inizio_righe, verbose, tab_cam=None):
     """
     Finestra senza nessuna velocita' misurata: ricerca ESTESA della pallina (palla_locale:
     pallina mossa + riaggancio a TrackNet; per il servizio si parte dal lancio). Se il
@@ -894,9 +965,18 @@ def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam
     righe = colpi[inizio_righe:]
     for fc in contatti:
         colpo = colpo_al_contatto(classi, fc, traccia, t, a, b)
-        riga = {"frame": fc, "tempo_s": round(float(t["tempo"][fc - 1]), 3), "colpo": colpo, "calibrazione": fonte}
+        liv, px_cam = camera.livello(tab_cam, fc, altezza_img)
+        riga = {"frame": fc, "tempo_s": round(float(t["tempo"][fc - 1]), 3), "colpo": colpo, "calibrazione": fonte,
+                "camera": liv, "camera_px": round(px_cam)}
+        if liv == "eccessiva":
+            # camera.py: nessun numero dalla calibrazione; il colpo resta (se la finestra non ha gia' una riga)
+            if not righe:
+                riga["nota"] = f"camera mossa ({px_cam:.0f} px a 1080p rispetto alla calibrazione): misura non mostrata"
+                colpi.append(riga)
+                righe = [riga]
+            continue
         try:
-            r, piedi, angolo, x_arr, direzione, rimbalzo, usati = misura(t, traccia, fc, cam)
+            r, piedi, angolo, x_arr, direzione, rimbalzo, usati = misura(t, traccia, fc, camera.camera_al_frame(cam, tab_cam, fc))
         except (ValueError, IndexError, np.linalg.LinAlgError):
             if not righe:
                 # la posa dice colpo e la pallina c'e': riga senza misura (per direzione_nascosta.py
@@ -921,7 +1001,7 @@ def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam
             "contatto_z_m": round(float(r["impact_xyz_m"][2]), 2),
             "punti_usati": r["n_points"], "errore_px": round(r["rms_px"], 1),
             "nota": "pallina mossa al colpo: solo direzione (velocita' non affidabile)",
-            "_punti": [(f, *traccia[f][:2]) for f in usati]})
+            "_punti": [(f, *traccia[f][:2]) for f in usati], "_traccia": r["_traccia"]})
         # sostituisce le righe senza misura dello stesso colpo trovate dalla ricerca normale: quelle entro 15
         # frame e, con STESSA_FINESTRA, la riga "contatto non visibile" della finestra a qualunque distanza
         # (e' solo il segnaposto del colpo; video_alcaraz_palline_sparse: 800 trovato, segnaposto al 835)
@@ -935,9 +1015,9 @@ def solo_direzione(video, t, classi, a, b, primo, ultimo, tracknet, altezze, cam
             print(f"  ricerca estesa: frame {fc} {colpo}, solo direzione: {direzione}")
 
 
-CAMPI = ["frame", "tempo_s", "colpo", "velocita_uscita_kmh", "velocita_rimbalzo_kmh", "direzione", "dritto_tipo", "angolo_gradi",
+CAMPI = ["frame", "tempo_s", "colpo", "velocita_uscita_kmh", "velocita_rimbalzo_kmh", "velocita_fonte", "direzione", "dritto_tipo", "angolo_gradi",
          "soglia_sx_gradi", "soglia_dx_gradi", "giocatore_x_m", "partenza_da", "arrivo_x_m", "rimbalzo_x_m", "rimbalzo_y_m", "contatto_x_m", "contatto_y_m", "contatto_z_m",
-         "punti_usati", "errore_px", "calibrazione", "nota"]
+         "punti_usati", "errore_px", "velocita_libera_kmh", "calibrazione", "camera", "camera_px", "nota"]
 
 
 def main():

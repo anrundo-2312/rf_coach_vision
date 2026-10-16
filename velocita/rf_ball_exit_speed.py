@@ -232,7 +232,8 @@ def exit_speed(track_px, frame_idx, fps, cam, change_idx,
                impact_mode="visual", audio=None, sr=None,
                av_offset_s=0.0, n_frames=10, player_ground_xy=None,
                bounce_frame=None, bounce_px=None, k=K_DRAG, return_debug=False,
-               forward=False, depth_tol=None):
+               forward=False, depth_tol=None, bounce_xy=None, bounce_tol=(0.25, 1.0),
+               impact=None):
     """
     Velocità della palla all'uscita dalla racchetta (km/h).
 
@@ -257,12 +258,28 @@ def exit_speed(track_px, frame_idx, fps, cam, change_idx,
                   camera-giocatore (calcolata da player_ground_xy). Senza, con
                   la camera dietro al giocatore il fit puo' mettere il contatto
                   metri davanti o dietro il giocatore.
+    bounce_xy:    [aggiunta rf_coach_vision, 16/10] il rimbalzo TROVATO a terra
+                  (x, y in m) al frame bounce_frame: entra nel calcolo come
+                  vincolo di posizione (la traiettoria deve toccare terra li',
+                  entro bounce_tol[0] m) e di TEMPO (deve toccare terra a quel
+                  frame, entro bounce_tol[1] frame). Il tempo di volo e' quello
+                  che lega la velocita' alla profondita': senza, un colpo lungo
+                  la linea di vista della camera (pochi pixel di spostamento per
+                  metro di profondita') puo' dare 190 km/h con 2 px di errore.
+                  bounce_px (API originale) resta: solo posizione, dal pixel.
+    impact:       [aggiunta rf_coach_vision, 16/10] (t_impatto_s, pixel) dati
+                  dal chiamante al posto di refine_impact_visual: per il
+                  contatto coperto (TrackNet riprende la pallina dopo il colpo),
+                  con il tempo dal primo punto in uscita. visual_gap_px = nan.
     """
     px = np.asarray(track_px, float)
     fi = np.asarray(frame_idx, int)
 
     # --- 1. istante e pixel di impatto
-    t_vis, p_vis, gap, curves = refine_impact_visual(px, fi, change_idx, fps)
+    if impact is not None:
+        t_vis, p_vis, gap, curves = float(impact[0]), np.asarray(impact[1], float), float("nan"), None
+    else:
+        t_vis, p_vis, gap, curves = refine_impact_visual(px, fi, change_idx, fps)
     t_imp, p_imp, mode_used, snr = t_vis, p_vis, "visual", None
     if impact_mode == "audio":
         if audio is None or sr is None:
@@ -293,6 +310,10 @@ def exit_speed(track_px, frame_idx, fps, cam, change_idx,
         else:
             s0 = 9.0
         bxy = ground_from_pixel(bounce_px, cam)[:2] if bounce_px is not None else None
+        tb = None                      # [rf_coach_vision] istante del rimbalzo trovato, dall'impatto
+        if bounce_xy is not None:
+            bxy = np.asarray(bounce_xy, float)[:2]
+            tb = bounce_frame / fps - t_imp if bounce_frame is not None else None
         half = 0.5 / fps if free_dt else 0.002
         lb = np.array([1.0, -90, 0.5 if forward else -90, -45, -half])
         ub = np.array([60.0, 90, 90, 45, half])
@@ -308,8 +329,11 @@ def exit_speed(track_px, frame_idx, fps, cam, change_idx,
                 r = np.r_[r, (p0[:2] - np.asarray(player_ground_xy)) / 0.8 * 2.0]
             r = np.r_[r, 2.0 * max(0.0, -p0[2]) / 0.05, 2.0 * max(0.0, p0[2] - 3.4) / 0.05]
             if bxy is not None:
-                _, pb = ground_crossing(p0, v0, k)
-                r = np.r_[r, (pb[:2] - bxy) / 0.25 * 2.0]
+                t_terra, pb = ground_crossing(p0, v0, k)
+                tol_xy = bounce_tol[0] if bounce_xy is not None else 0.25
+                r = np.r_[r, (pb[:2] - bxy) / tol_xy * 2.0]
+                if tb is not None:     # [rf_coach_vision] anche il tempo di volo fino al rimbalzo trovato
+                    r = np.r_[r, (t_terra - (tb - dt)) / (bounce_tol[1] / fps) * 2.0]
             return r
 
         # multi-start: direzione iniziale dall'ultimo punto proiettato a terra
@@ -333,9 +357,14 @@ def exit_speed(track_px, frame_idx, fps, cam, change_idx,
             sig = float(np.sqrt(g @ cov @ g))
         except np.linalg.LinAlgError:
             sig = float("nan")
-        return {"speed": spd, "sigma": sig, "p0": C + sol.x[0] * ray, "v0": v0,
-                "dt": sol.x[4], "n": len(sel),
-                "rms_px": float(np.sqrt(np.mean(sol.fun[:2 * len(sel)] ** 2)))}
+        out = {"speed": spd, "sigma": sig, "p0": C + sol.x[0] * ray, "v0": v0,
+               "dt": sol.x[4], "n": len(sel),
+               "rms_px": float(np.sqrt(np.mean(sol.fun[:2 * len(sel)] ** 2)))}
+        if bxy is not None:            # [rf_coach_vision] quanto la traiettoria manca il rimbalzo trovato
+            t_terra, pb = ground_crossing(out["p0"], v0, k)
+            out["bounce_err_m"] = float(np.linalg.norm(pb[:2] - bxy))
+            out["bounce_err_frames"] = float((t_terra - (tb - sol.x[4])) * fps) if tb is not None else None
+        return out
 
     if mode_used == "audio":
         # correzione ritardo del suono con la distanza stimata (2 iterazioni)
@@ -356,6 +385,8 @@ def exit_speed(track_px, frame_idx, fps, cam, change_idx,
            "audio_snr_db": snr, "visual_gap_px": gap}
     if return_debug:
         out["v0_ms"] = fit["v0"]
+    if "bounce_err_m" in fit:          # [rf_coach_vision] con il rimbalzo nel calcolo
+        out["bounce_err_m"], out["bounce_err_frames"] = fit["bounce_err_m"], fit["bounce_err_frames"]
     return out
 
 

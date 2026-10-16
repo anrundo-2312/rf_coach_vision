@@ -5,11 +5,14 @@ calcolo normale non riesce a misurare.
     python velocita/velocita_rimbalzo.py --video inputs/<video>.mp4
 
 Si esegue DOPO velocita_uscita.py e direzione_nascosta.py e PRIMA di
-disegna_velocita.py. Guarda solo i colpi senza velocita' (contatto nascosto,
-solo direzione, misura scartata). La velocita' di velocita_uscita.py non viene
-mai toccata: quella stimata qui va in una colonna a parte,
-velocita_rimbalzo_kmh, e sul video compare come "circa ... km/h (dal
-rimbalzo)".
+disegna_velocita.py. La stima guarda solo i colpi senza velocita' (contatto
+nascosto, solo direzione, misura scartata) e va in una colonna a parte,
+velocita_rimbalzo_kmh; sul video compare come "circa ... km/h (dal
+rimbalzo)". Dal 16 ottobre il rimbalzo trovato entra anche nel calcolo della
+velocita' misurata (passo 8: velocita_uscita_kmh puo' cambiare, quella senza
+rimbalzo resta in velocita_libera_kmh) e per il contatto coperto si prova la
+misura vera dai punti in uscita (passo 3b). La colonna velocita_fonte dice da
+dove viene ogni velocita' (velocita_uscita.FONTE_*).
 
 L'idea. Quando la pallina e' mossa o coperta vicino al giocatore, il calcolo
 normale non ha punti buoni subito dopo il colpo. Ma spesso si vede dove la
@@ -50,12 +53,26 @@ Passi, per ogni colpo senza velocita':
    c'e' il colpo) e, se la riga viene da un contatto gia' trovato, non si va
    prima di quel frame (nel servizio il lancio che scende e la pallina colpita
    sono quasi in fila). Il primo punto deve cadere entro 25 frame dal colpo
-   indicato dalla riga, se no il rimbalzo e' di un altro colpo.
+   indicato dalla riga, se no il rimbalzo e' di un altro colpo. Dal 16/10 il
+   contatto non e' sempre mezzo frame prima del primo punto: se e' stato
+   visto al frame della riga ("misura scartata", "pallina mossa") e' mezzo
+   frame dopo quello (contatto_visto); se e' coperto dal corpo con il tratto
+   coperto noto (direzione_nascosta.py: "persa al frame A, ricompare al B") e'
+   a meta' del tratto, come nei passi 4 e 5. Con TrackNet che riprende la
+   pallina 10-20 frame dopo il colpo il volo veniva troppo corto e la stima
+   gonfiata (sinner 83: 139 invece di 118; 1504: 149 invece di circa 120).
 3. VELOCITA' E DIREZIONE dalla traiettoria che va dal giocatore al rimbalzo
    nel tempo misurato (istanti veri se il video ha fotogrammi ripetuti, vedi
    fotogrammi.py). La direzione (lungo linea, incrociato...; nel servizio al T,
    al corpo, esterno) viene dal rimbalzo misurato e sostituisce quella
    ricavata dai punti in volo.
+3b. (16/10, RECUPERO_USCITA) MISURA VERA DAI PUNTI IN USCITA: con il rimbalzo
+   dei passi 1-3 si prova velocita_uscita.misura (exit_speed) sui punti di
+   TrackNet dal primo in uscita al rimbalzo, contatto mezzo frame prima del
+   primo punto, rimbalzo nel calcolo. Se passa i controlli della misura
+   normale e la traiettoria passa dal rimbalzo (RIMBALZO_COMPATIBILE), la
+   riga ha velocita_uscita_kmh (fonte "misurata, contatto dal rimbalzo") e la
+   stima resta in velocita_rimbalzo_kmh. Vedi recupera_uscita.
 
 Se il giocatore e' fuori dall'immagine al colpo (posa senza caviglie ne'
 riquadro: jimmy_manson_2 a 24,8 s) la posizione a terra non c'e' e quella riga
@@ -137,6 +154,17 @@ Un rimbalzo non vale per due colpi.
    rimbalzo_trovato_come = "ricostruito", la nota dice tra quali frame
    TrackNet ha perso la pallina. Velocita', media del volo e direzione
    restano come prima (PUNTO_NEL_BUCO = False per spegnere).
+8. (16/10, velocita_uscita.RIMBALZO_NEL_CALCOLO) IL RIMBALZO NEL CALCOLO:
+   per le righe con il contatto visto (traccia del calcolo normale nel JSON,
+   misura riuscita o scartata) e il rimbalzo trovato da TrackNet o dal colore,
+   il calcolo si rifa' con il rimbalzo come vincolo di posizione (0,25 m) e
+   di tempo di volo (1 frame). Si tiene solo se passa i controlli di sempre e
+   la traiettoria passa davvero dal rimbalzo (entro 0,6 m e 0,1 s): allora
+   velocita_uscita_kmh e' il nuovo valore (fonte "misurata con rimbalzo") e
+   quello senza rimbalzo va in velocita_libera_kmh. Senza rotazione nel
+   modello un topspin forte non e' compatibile (zverev 65: 2,3 m, 11 frame)
+   e resta la misura di prima. Vedi rimbalzo_nel_calcolo. Viene prima della
+   media (7), che cosi' si calcola sulla velocita' mostrata.
 7. VELOCITA' MEDIA DEL VOLO (velocita_media_kmh): distanza a terra dal
    contatto al rimbalzo trovato diviso il tempo di volo, in km/h. Nelle stime
    dei passi 1-5 e' il dato da cui si ricava la velocita' d'uscita ("media fino
@@ -145,7 +173,12 @@ Un rimbalzo non vale per due colpi.
    passo 6. La pallina in volo rallenta sempre (aria), quindi la media e' piu'
    bassa della velocita' d'uscita (di solito 75-85%): se viene piu' alta una
    delle due misure e' sbagliata, la media non si scrive e la nota lo dice.
-   Senza rimbalzo trovato o senza velocita' non c'e'.
+   Se e' sotto il 65% dell'uscita (velocita_uscita.RAPPORTO_MEDIA_MIN)
+   l'uscita e' gonfiata: la fonte prende ", circa" e sul video "uscita circa
+   N km/h" (16/10). Senza rimbalzo trovato o senza velocita' non c'e'.
+CAMERA MOSSA (16/10, camera.py): ogni riga usa la calibrazione corretta per
+il suo fotogramma; se lo spostamento e' "moderata" o "eccessiva" il rimbalzo
+non si cerca (niente stima, mappa, dentro/fuori, media) e la nota lo dice.
 DRITTO INSIDE-OUT / INSIDE-IN (colonna dritto_tipo, velocita_uscita.tipo_dritto):
 dritto colpito con i piedi almeno 1 m oltre la riga centrale dalla parte del
 rovescio; per un destro inside-in se la pallina finisce nel terzo di sinistra
@@ -196,6 +229,7 @@ sys.path.insert(0, QUI)
 import rf_ball_exit_speed as calcolo  # noqa: E402
 import velocita_uscita as vu  # noqa: E402
 import fotogrammi  # noqa: E402
+import camera  # noqa: E402
 import palla_locale  # noqa: E402
 from calibra_campo import camera_da_json, carica_per_video  # noqa: E402
 
@@ -212,6 +246,7 @@ VOLO_S = (0.25, 1.6)
 RAGGIO_PALLINA = 0.033      # m: al rimbalzo il centro della pallina e' a quest'altezza (rimbalzo_a_terra)
 RIMBALZO_SUL_RAGGIO = True  # False = come prima: il centro della pallina portato a z = 0 (rimbalzo piu' lungo)
 PUNTO_NEL_BUCO = True       # passo 6c (08/10): rimbalzo di TrackNet accanto a un buco -> punto ricostruito (mappa, dentro/fuori)
+RECUPERO_USCITA = True      # passo 3b (16/10): contatto coperto, misura vera dai punti in uscita + rimbalzo (recupera_uscita)
 RIMB_BUCO_S = 0.067         # buco (s) subito prima o subito dopo il punto piu' basso oltre il quale si ricostruisce
 NOTA_PUNTO_BUCO = "punto del rimbalzo ricostruito"
 ALTEZZA_CONTATTO = {"servizio": 2.6}   # m; tutti gli altri colpi 1,0 m
@@ -219,6 +254,11 @@ NOTA_RIMBALZO = "velocita' stimata dal rimbalzo"
 NOTA_RICOSTRUITO = "velocita' stimata dal rimbalzo ricostruito"   # comincia come NOTA_RIMBALZO
 NOTA_ESTESA = "pallina mossa al colpo"     # righe "solo direzione" della ricerca estesa (velocita_uscita.py)
 PUNTO4 = True               # "solo direzione" + rimbalzo del passo 6 -> velocita' dal contatto della riga
+# (16/10) lo stesso per le righe con il contatto COPERTO dal corpo (direzione_nascosta.py, "persa al frame A,
+# ricompare al B"): contatto a meta' del tratto coperto, come nei passi 4 e 5, se il tratto dura al massimo
+# COPERTO_MAX_S (l'istante del contatto e' incerto di meta' tratto: con 0,3 s di tratto, +-0,15 s su un volo di
+# 0,7-0,8 s, cioe' circa +-20% sulla velocita' e sulla media; la nota lo dice e sul video c'e' "circa")
+COPERTO_MAX_S = 0.3
 # pallina del colpo (08/10): il rimbalzo si cerca solo sulla traccia coerente di TrackNet che contiene i punti del colpo
 TRACCIA_DEL_COLPO = True
 TRACCIA_SALTO = 0.08        # tracce coerenti: spostamento massimo per fotogramma, in altezze dell'immagine
@@ -393,6 +433,16 @@ def inizio_traiettoria(tn, f_rimbalzo, limite, altezze, ripetuti=None):
         f = g
 
 
+def contatto_visto(riga):
+    """True se il contatto della riga e' stato visto al suo frame (righe "misura scartata" e "pallina mossa":
+    cambio di direzione vicino al polso trovato da velocita_uscita.py). Per queste, dal 16/10, il contatto delle
+    stime e' tra il frame della riga e il successivo (come nel calcolo normale e nel passo 5), non mezzo frame
+    prima del primo punto di TrackNet in uscita: quando TrackNet riprende la pallina 5-15 frame dopo il colpo
+    (sinner_final_test 83: contatto al 83, TrackNet dal 92) il volo veniva troppo corto e la stima gonfiata
+    (139 km/h invece di circa 118)."""
+    return str(riga.get("nota", "")).startswith(("pallina mossa", "misura scartata"))
+
+
 def stima(t, tn, altezze, cam, riga):
     """Stima dal rimbalzo per una riga senza velocita' (dizionario da aggiungere alla riga) o None."""
     fc = int(riga["frame"])
@@ -410,13 +460,25 @@ def stima(t, tn, altezze, cam, riga):
     s = inizio_traiettoria(tn, fb, limite, altezze, ripetuti)
     if abs(s - fc) > PRIMA_S or s >= fb:
         return None
-    # contatto mezzo frame prima del primo punto in uscita; istanti veri se ci sono ripetuti
+    # contatto mezzo frame prima del primo punto in uscita (o mezzo frame dopo il frame della riga se il
+    # contatto e' stato visto li', contatto_visto); istanti veri se ci sono ripetuti
     fps_vero = fps if t.get("tempi") is None else t["tempi"]["fps"]
-    t_contatto = vu.istante(t, s) - 0.5 / fps_vero
+    coperto = tratto_coperto(riga)
+    if contatto_visto(riga):
+        t_contatto = vu.istante(t, fc) + 0.5 / fps_vero
+        f_contatto = fc
+    elif coperto and coperto[0] < s <= coperto[1] + 1:
+        # contatto coperto dal corpo (direzione_nascosta.py): a meta' del tratto coperto, come nei passi 4 e 5
+        # (sinner 1504: pallina persa al 1504, ripresa al 1526; dal primo punto il volo veniva 0,35 s troppo corto)
+        f_c = (coperto[0] + coperto[1]) / 2
+        t_contatto = vu.istante(t, int(f_c)) + (f_c - int(f_c)) / fps_vero
+        f_contatto = int(f_c)
+    else:
+        t_contatto = vu.istante(t, s) - 0.5 / fps_vero
+        f_contatto = max(1, s - 1)
     volo = vu.istante(t, fb) - t_contatto
     if not VOLO_S[0] <= volo <= VOLO_S[1]:
         return None
-    f_contatto = max(1, s - 1)
     piedi = vu.piedi_a_terra(t, f_contatto, cam)
     if not np.all(np.isfinite(piedi)):
         return None     # giocatore fuori dall'immagine: niente posizione a terra, la riga si salta (vedi in testa)
@@ -598,6 +660,8 @@ def stima_colore(t, tn, altezze, cam, riga, video, cap, scala, usati):
     coperto = tratto_coperto(riga)
     if coperto:                                   # contatto coperto: meta' del tratto coperto
         f_c = (coperto[0] + coperto[1]) / 2
+    elif contatto_visto(riga):                    # contatto visto al frame della riga (16/10, vedi contatto_visto)
+        f_c = fc + 0.5
     else:
         contatto_trovato = not str(riga.get("nota", "")).startswith("contatto non visibile")
         limite = fc + 1 if contatto_trovato else fc - PRIMA_S - BUCO_MAX
@@ -770,24 +834,49 @@ def stima_ricostruita(t, tn, cam, riga, altezza_img, usati):
 
 
 # ------------------------------------------------------------------ passo 6
-def stima_da_contatto_esteso(t, tn, cam, c, x, y, fb, come):
+def contatto_coperto_breve(t, c):
+    """Frame (frazionario) del contatto a meta' del tratto coperto, se la riga viene da direzione_nascosta.py e il
+    tratto coperto dura al massimo COPERTO_MAX_S; altrimenti None (vedi COPERTO_MAX_S)."""
+    coperto = tratto_coperto(c)
+    if not coperto:
+        return None
+    fps_vero = t["fps"] if t.get("tempi") is None else t["tempi"]["fps"]
+    if (coperto[1] - coperto[0]) / fps_vero > COPERTO_MAX_S:
+        return None
+    return (coperto[0] + coperto[1]) / 2
+
+
+def stima_da_contatto_esteso(t, tn, cam, c, x, y, fb, come, f_c=None):
     """
     Riga "solo direzione" (contatto trovato dalla ricerca estesa) con il rimbalzo trovato al passo 6:
     velocita' dal contatto della riga (frame + 0,5) al rimbalzo, come nei passi 4-5 (velocita_da_volo). Non si
-    risale la traiettoria dal rimbalzo. (campi, frame del rimbalzo) o None se il volo o la velocita' non sono
-    plausibili.
+    risale la traiettoria dal rimbalzo. Dal 16/10 anche per il contatto coperto dal corpo, con f_c a meta' del
+    tratto coperto (contatto_coperto_breve): margine piu' largo, scritto nella nota. (campi, frame del rimbalzo)
+    o None se il volo o la velocita' non sono plausibili.
     """
     fc = int(c["frame"])
-    v = velocita_da_volo(t, cam, c, fc + 0.5, vu.istante(t, fb), (x, y), tn)
+    coperto = f_c is not None
+    if f_c is None:
+        f_c = fc + 0.5
+    v = velocita_da_volo(t, cam, c, f_c, vu.istante(t, fb), (x, y), tn)
     if v is None:
         return None
     v0, kmh, media, volo, piedi, p0, partenza = v
     ricostruito = come == "ricostruito"
-    nota = (f"{NOTA_RICOSTRUITO if ricostruito else NOTA_RIMBALZO} (margine circa {'+-20' if ricostruito else '+-15'}%), "
-            f"dal contatto della ricerca estesa: contatto ~frame {fc}, rimbalzo al frame {fb} a ({x:.1f}; {y:.1f}) m"
-            + (" (trovato con il colore)" if come == "colore" else "")
-            + f", volo {volo:.2f} s, media fino al rimbalzo {media:.0f} km/h")
-    punti = [(f, float(tn[f][0]), float(tn[f][1])) for f in range(fc + 1, fb + 1) if f in tn]
+    if coperto:
+        a, b = tratto_coperto(c)
+        fps_vero = t["fps"] if t.get("tempi") is None else t["tempi"]["fps"]
+        incert = (b - a) / 2 / fps_vero / volo
+        nota = (f"{NOTA_RICOSTRUITO if ricostruito else NOTA_RIMBALZO} (margine circa +-{max(15, 100 * incert + 10):.0f}%: "
+                f"contatto coperto tra i frame {a} e {b}, preso a meta'): contatto ~frame {f_c:.0f}, rimbalzo al frame "
+                f"{fb} a ({x:.1f}; {y:.1f}) m" + (" (trovato con il colore)" if come == "colore" else "")
+                + f", volo {volo:.2f} s, media fino al rimbalzo {media:.0f} km/h")
+    else:
+        nota = (f"{NOTA_RICOSTRUITO if ricostruito else NOTA_RIMBALZO} (margine circa {'+-20' if ricostruito else '+-15'}%), "
+                f"dal contatto della ricerca estesa: contatto ~frame {fc}, rimbalzo al frame {fb} a ({x:.1f}; {y:.1f}) m"
+                + (" (trovato con il colore)" if come == "colore" else "")
+                + f", volo {volo:.2f} s, media fino al rimbalzo {media:.0f} km/h")
+    punti = [(f, float(tn[f][0]), float(tn[f][1])) for f in range(int(f_c) + 1, fb + 1) if f in tn]
     return riga_stima(c, v0, kmh, piedi, p0, (x, y), punti, nota, partenza, media), fb
 
 
@@ -998,6 +1087,160 @@ def direzione_dal_rimbalzo(riga, x, y):
 NOTA_MEDIA = "media fino al rimbalzo"
 
 
+def recupera_uscita(t, cam, c, altezza_img, verbose=False):
+    """
+    Passo 3b (16/10): contatto coperto ma rimbalzo visto da TrackNet (passi 1-3 appena fatti). Si prova la misura
+    vera (velocita_uscita.misura = exit_speed) sui punti di TrackNet in uscita (_punti della stima, dal primo punto
+    della traiettoria al rimbalzo), con il contatto mezzo frame prima del primo punto, come nella stima, e il
+    rimbalzo trovato nel calcolo (posizione e tempo di volo). Se passa gli stessi controlli della misura normale
+    (errore <= 6 px a 1080p, 30-250 km/h, tetti per colpo, angolo) la riga ha velocita_uscita_kmh con fonte
+    FONTE_CONTATTO_DAL_RIMBALZO; la stima dal solo rimbalzo resta in velocita_rimbalzo_kmh. Se il contatto vero e'
+    piu' di qualche frame prima del primo punto, i punti e il rimbalzo non tornano con la profondita' del
+    giocatore e il controllo dell'errore scarta: resta la stima. Ritorna True se la misura e' stata scritta.
+    """
+    punti = c.get("_punti") or []
+    fb = c.get("rimbalzo_trovato_frame")
+    if len(punti) < 5 or fb in (None, "") or c.get("rimbalzo_trovato_x_m", "") in ("", None):
+        return False
+    fb = int(fb)
+    traccia = {int(f): (float(x), float(y), 0.0) for f, x, y in punti if int(f) < fb}
+    fs = sorted(traccia)
+    if len(fs) < 5:
+        return False
+    s = fs[0]
+    fps_vero = t["fps"] if t.get("tempi") is None else t["tempi"]["fps"]
+    fc = int(c["frame"])
+    locale = {int(f): (float(x), float(y)) for f, x, y in (c.get("_traccia") or [])}   # traccia del calcolo normale
+    if contatto_visto(c) and s > fc and (fc in locale or fc + 1 in locale):
+        # contatto visto al frame della riga: istante e pixel da li' (traccia del rilevatore locale), punti di
+        # TrackNet da quando riprende la pallina
+        t_c = vu.istante(t, fc) + 0.5 / fps_vero
+        px_c = np.array(locale.get(fc, locale.get(fc + 1)))
+        f_contatto = fc
+    else:
+        t_c = vu.istante(t, s) - 0.5 / fps_vero
+        p1, p2 = np.array(traccia[fs[0]][:2]), np.array(traccia[fs[1]][:2])
+        px_c = p1 - 0.5 * (p2 - p1) / (fs[1] - fs[0])    # il pixel del contatto: mezzo frame prima del primo punto
+        f_contatto = s - 1
+    terra = (fb, float(c["rimbalzo_trovato_x_m"]), float(c["rimbalzo_trovato_y_m"]))
+    try:
+        r, piedi, angolo, x_arr, direzione, rimb, usati = vu.misura(t, traccia, f_contatto, cam, rimbalzo=terra,
+                                                                    contatto=(t_c, px_c))
+    except (ValueError, IndexError, np.linalg.LinAlgError) as e:
+        if verbose:
+            print(f"frame {c['frame']} {c['colpo']}: misura dai punti in uscita non calcolabile: {e}")
+        return False
+    motivi = vu.controlla_risultato(r, angolo, c["colpo"], altezza_img, int(c["frame"]), verbose, "contatto dal rimbalzo")
+    if rimbalzo_mancato(r, fps_vero):
+        motivi.append(rimbalzo_mancato(r, fps_vero))
+    if motivi:
+        c["nota"] = str(c.get("nota", "")) + "; misura dai punti in uscita scartata: " + "; ".join(motivi)
+        if verbose:
+            print(f"frame {c['frame']} {c['colpo']}: misura dai punti in uscita ({r['exit_kmh']:.0f} km/h) scartata: "
+                  + "; ".join(motivi))
+        return False
+    scrivi_misura(c, r, piedi, angolo, x_arr, direzione, usati, traccia, vu.FONTE_CONTATTO_DAL_RIMBALZO)
+    errore = r["rms_px"] * 1080 / altezza_img
+    c["nota"] = (f"contatto {'al frame ' + str(fc) if f_contatto == fc else 'coperto'}: velocita' misurata dai punti "
+                 f"in uscita dal frame {s} con il rimbalzo nel calcolo "
+                 f"(errore {errore:.1f} px a 1080p, rimbalzo mancato di {r['bounce_err_m']:.2f} m); "
+                 f"stima dal solo rimbalzo {c['velocita_rimbalzo_kmh']} km/h. " + str(c.get("nota", "")))
+    if verbose:
+        print(f"frame {c['frame']} {c['colpo']}: {c['velocita_uscita_kmh']} km/h misurati dai punti in uscita "
+              f"(contatto dal rimbalzo, errore {errore:.1f} px); la stima dal rimbalzo era {c['velocita_rimbalzo_kmh']}")
+    return True
+
+
+def rimbalzo_mancato(r, fps):
+    """Perche' la traiettoria con il rimbalzo nel calcolo non passa dal rimbalzo trovato (stringa), o "" se ci passa
+    entro velocita_uscita.RIMBALZO_COMPATIBILE (m, s); fps = fotogrammi veri al secondo del calcolo."""
+    m, fr = r.get("bounce_err_m"), r.get("bounce_err_frames")
+    if m is None:
+        return ""
+    lim_m, lim_s = vu.RIMBALZO_COMPATIBILE
+    lim_f = lim_s * fps
+    if m <= lim_m and (fr is None or abs(fr) <= lim_f):
+        return ""
+    return (f"la traiettoria senza rotazione non passa dal rimbalzo trovato (manca di {m:.1f} m"
+            + (f" e {fr:.0f} frame" if fr is not None else "") + f", limite {lim_m:.1f} m e {lim_f:.0f} frame)")
+
+
+def scrivi_misura(c, r, piedi, angolo, x_arr, direzione, usati, traccia, fonte):
+    """I campi della misura (come in velocita_uscita.aggiungi_contatto) scritti sulla riga c."""
+    partenza = r["_partenza"]
+    if c["colpo"] == "servizio":
+        terra = (float(c["rimbalzo_trovato_x_m"]), float(c["rimbalzo_trovato_y_m"]))
+        direzione = vu.classifica_servizio(float(piedi[0]), terra)
+        partenza = (float(piedi[0]), "piedi")
+    c.update({"velocita_uscita_kmh": round(r["exit_kmh"]), "velocita_fonte": fonte,
+              "direzione": direzione, "angolo_gradi": round(angolo, 1),
+              "giocatore_x_m": round(float(piedi[0]), 2), "arrivo_x_m": round(x_arr, 2),
+              "partenza_da": partenza[1], "_partenza_x_m": round(partenza[0], 2),
+              "contatto_x_m": round(float(r["impact_xyz_m"][0]), 2),
+              "contatto_y_m": round(float(r["impact_xyz_m"][1]), 2),
+              "contatto_z_m": round(float(r["impact_xyz_m"][2]), 2),
+              "punti_usati": r["n_points"], "errore_px": round(r["rms_px"], 1),
+              "_punti": [(f, *traccia[f][:2]) for f in usati]})
+
+
+def rimbalzo_nel_calcolo(t, colpi, cam_di, altezza_img, verbose=False):
+    """
+    Passo 8 (16/10, velocita_uscita.RIMBALZO_NEL_CALCOLO): nei colpi con il contatto visto (la traccia del calcolo
+    normale, _traccia) e il rimbalzo trovato (passi 1-6c, non "serie"), il calcolo si rifa' con il rimbalzo come
+    vincolo di posizione e di tempo di volo. Vale per le righe con la velocita' misurata e per quelle in cui la
+    misura era stata scartata (per esempio sopra il tetto del colpo). Se il nuovo risultato passa i controlli
+    della misura normale diventa velocita_uscita_kmh con fonte FONTE_CON_RIMBALZO; la misura senza rimbalzo va in
+    velocita_libera_kmh. Se non li passa resta tutto com'era e la nota lo dice.
+    """
+    if not vu.RIMBALZO_NEL_CALCOLO:
+        return
+    for c in colpi:
+        if not c.get("_traccia") or c.get("rimbalzo_trovato_frame") in (None, ""):
+            continue
+        if c.get("rimbalzo_trovato_come") not in ("tracknet", "colore"):     # serie / ricostruito: rimbalzo meno sicuro
+            continue
+        if str(c.get("nota", "")).startswith(NOTA_ESTESA):      # pallina mossa al colpo: punti vicino al contatto non buoni
+            continue
+        if c.get("velocita_fonte") not in (vu.FONTE_MISURATA, vu.FONTE_STIMATA, "", None):
+            continue
+        fc, fb = int(c["frame"]), int(c["rimbalzo_trovato_frame"])
+        terra = (fb, float(c["rimbalzo_trovato_x_m"]), float(c["rimbalzo_trovato_y_m"]))
+        traccia = {int(f): (float(x), float(y), 0.0) for f, x, y in c["_traccia"]}
+        libera = c.get("velocita_uscita_kmh", "")
+        if libera == "":
+            libera = c.get("_libera_kmh", "")
+        try:
+            r, piedi, angolo, x_arr, direzione, rimb, usati = vu.misura(t, traccia, fc, cam_di(c), rimbalzo=terra)
+        except (ValueError, IndexError, np.linalg.LinAlgError) as e:
+            if verbose:
+                print(f"frame {fc} {c['colpo']}: calcolo con il rimbalzo non riuscito: {e}")
+            continue
+        errore = r["rms_px"] * 1080 / altezza_img
+        motivi = vu.controlla_risultato(r, angolo, c["colpo"], altezza_img, fc, verbose, "con rimbalzo")
+        fps_vero = t["fps"] if t.get("tempi") is None else t["tempi"]["fps"]
+        if rimbalzo_mancato(r, fps_vero):
+            motivi.append(rimbalzo_mancato(r, fps_vero))
+        nota = str(c.get("nota", ""))
+        if motivi:
+            if verbose:
+                print(f"frame {fc} {c['colpo']}: con il rimbalzo nel calcolo {r['exit_kmh']:.0f} km/h, scartato: "
+                      + "; ".join(motivi))
+            c["nota"] = (nota + "; " if nota else "") + (
+                f"con il rimbalzo nel calcolo {r['exit_kmh']:.0f} km/h, scartato: " + "; ".join(motivi)
+                + ("" if libera == "" else f"; resta la misura senza rimbalzo ({libera} km/h)"))
+            continue
+        c["velocita_libera_kmh"] = libera
+        scrivi_misura(c, r, piedi, angolo, x_arr, direzione, usati, traccia, vu.FONTE_CON_RIMBALZO)
+        c["nota"] = (nota + "; " if nota else "") + (
+            f"rimbalzo nel calcolo: {libera if libera != '' else 'niente'} -> {c['velocita_uscita_kmh']} km/h "
+            f"(errore {errore:.1f} px a 1080p, rimbalzo mancato di {r['bounce_err_m']:.2f} m e "
+            f"{r['bounce_err_frames']:.1f} frame)")
+        if verbose:
+            print(f"frame {fc} {c['colpo']}: con il rimbalzo nel calcolo {c['velocita_uscita_kmh']} km/h "
+                  f"(senza: {libera if libera != '' else 'scartata'}; errore {errore:.1f} px, "
+                  f"rimbalzo mancato di {r['bounce_err_m']:.2f} m, {r['bounce_err_frames']:.1f} frame)")
+
+
 def aggiungi_media(t, colpi, verbose=False):
     """
     velocita_media_kmh per i colpi con la velocita' misurata (velocita_uscita.py) e il rimbalzo trovato:
@@ -1030,8 +1273,19 @@ def aggiungi_media(t, colpi, verbose=False):
                 print(f"frame {c['frame']} {c['colpo']}: media {media:.0f} km/h > uscita {c['velocita_uscita_kmh']}: non mostrata")
             continue
         c["velocita_media_kmh"] = round(media)
+        rapporto = media / float(c["velocita_uscita_kmh"])
+        if rapporto < vu.RAPPORTO_MEDIA_MIN:
+            # media troppo bassa rispetto all'uscita: la misura d'uscita e' gonfiata (profondita' mal condizionata)
+            fonte = str(c.get("velocita_fonte", "") or vu.FONTE_MISURATA)
+            if not fonte.endswith(vu.FONTE_CIRCA):
+                c["velocita_fonte"] = fonte + vu.FONTE_CIRCA
+            nota = str(c.get("nota", ""))
+            c["nota"] = (nota + "; " if nota else "") + (
+                f"media del volo {media:.0f} km/h = {rapporto:.0%} dell'uscita (sotto {vu.RAPPORTO_MEDIA_MIN:.0%}): "
+                f"velocita' d'uscita da prendere come circa")
         if verbose:
-            print(f"frame {c['frame']} {c['colpo']}: media del volo {media:.0f} km/h (volo {volo:.2f} s, {d:.1f} m)")
+            print(f"frame {c['frame']} {c['colpo']}: media del volo {media:.0f} km/h (volo {volo:.2f} s, {d:.1f} m)"
+                  + (f", solo il {rapporto:.0%} dell'uscita: circa" if rapporto < vu.RAPPORTO_MEDIA_MIN else ""))
 
 
 def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=True, mano="auto"):
@@ -1042,6 +1296,25 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     t["tempi"] = fotogrammi.tempi_reali(video, cartella_dati, t["fps"], verbose=False)
     cal, _ = carica_per_video(video, calibrazione)
     cam = camera_da_json(cal)
+    # la calibrazione che segue la camera (camera.py): per ogni riga la camera corretta al suo fotogramma; con la
+    # camera mossa (moderata o eccessiva) il rimbalzo nel campo lontano non e' affidabile e la riga si salta
+    tab_cam = camera.carica(cartella_dati, video)
+    cap0 = cv2.VideoCapture(video)
+    altezza_img = int(cap0.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
+    cap0.release()
+
+    def cam_di(c):
+        return camera.camera_al_frame(cam, tab_cam, int(c["frame"]))
+
+    def mossa(c):
+        liv, px_cam = camera.livello(tab_cam, int(c["frame"]), altezza_img)
+        if liv == "ok":
+            return False
+        c["camera"], c["camera_px"] = liv, round(px_cam)
+        if "camera mossa" not in str(c.get("nota", "")):
+            c["nota"] = (str(c.get("nota", "")) + "; " if c.get("nota") else "") + \
+                f"camera mossa ({px_cam:.0f} px a 1080p): rimbalzo e dentro/fuori non calcolati"
+        return True
     tn = {int(f): tuple(p) for f, p, v in zip(t["frame"], t["palla"], t["vista"]) if v}
     # i punti di TrackNet su palline ferme (velocita_uscita.py) si tolgono anche qui
     ferme = vu.leggi_palline_ferme(os.path.join(cartella_dati, nome + "_palline_ferme.csv"))
@@ -1060,7 +1333,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         if c.get("rimbalzo_trovato_frame") not in (None, ""):
             usati.add(int(c["rimbalzo_trovato_frame"]))
     da_stimare = lambda c: (c.get("velocita_uscita_kmh", "") == "" and c.get("velocita_rimbalzo_kmh", "") == ""
-                            and not str(c.get("nota", "")).startswith(NOTA_RIMBALZO))
+                            and not str(c.get("nota", "")).startswith(NOTA_RIMBALZO) and not mossa(c))
 
     tracce_colpi = {}                             # traccia della pallina di ogni colpo, calcolata una volta sola
 
@@ -1069,7 +1342,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         (traccia_del_colpo) se c'e', se no tutti i punti filtrati, come prima."""
         if id(c) in tracce_colpi:
             return tracce_colpi[id(c)]
-        tr = traccia_del_colpo(t, tn, c, cam, altezze)
+        tr = traccia_del_colpo(t, tn, c, cam_di(c), altezze)
         tracce_colpi[id(c)] = tn if tr is None else tr
         if verbose:
             if tr is not None:
@@ -1088,6 +1361,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         if c["colpo"] != "servizio":
             campi.pop("rimbalzo_x_m"), campi.pop("rimbalzo_y_m")
         c.update(campi)
+        c["velocita_fonte"] = vu.FONTE_RICOSTRUITA if come_breve == "ricostruito" else vu.FONTE_STIMATA
         if verbose:
             print(f"frame {c['frame']} {c['colpo']}: circa {campi['velocita_rimbalzo_kmh']} km/h ({come}), {campi['direzione']}")
 
@@ -1095,27 +1369,28 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     for c in colpi:
         if not da_stimare(c):
             continue
-        s = stima(t, punti_colpo(c), altezze, cam, c)
+        s = stima(t, punti_colpo(c), altezze, cam_di(c), c)
         if s is None:
             continue
         fb = int(s["nota"].split("rimbalzo al frame ")[1].split()[0])
         if fb in usati:                               # lo stesso rimbalzo non vale per due colpi
             continue
         applica(c, (s, fb), "rimbalzo visto da TrackNet", "tracknet")
+        if RECUPERO_USCITA:                            # passo 3b: la misura vera dai punti in uscita, se regge
+            recupera_uscita(t, cam_di(c), c, altezza_img, verbose)
 
     # passo 4: buchi di TrackNet riempiti con il colore nel campo lontano
     cap = cv2.VideoCapture(video)
-    altezza_img = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
     for c in colpi:
         if da_stimare(c):
-            r = stima_colore(t, punti_colpo(c), altezze, cam, c, video, cap, altezza_img / 1080, usati)
+            r = stima_colore(t, punti_colpo(c), altezze, cam_di(c), c, video, cap, altezza_img / 1080, usati)
             if r is not None:
                 applica(c, r, "rimbalzo trovato con il colore", "colore")
 
     # passo 5: rimbalzo coperto, ricostruito dalle curve prima e dopo
     for c in colpi:
         if da_stimare(c):
-            r = stima_ricostruita(t, punti_colpo(c), cam, c, altezza_img, usati)
+            r = stima_ricostruita(t, punti_colpo(c), cam_di(c), c, altezza_img, usati)
             if r is not None:
                 applica(c, r, "rimbalzo ricostruito", "ricostruito")
             elif verbose:
@@ -1123,7 +1398,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
 
     # passo 6: solo il punto del rimbalzo, per la mappa, nei colpi con una direzione che ne restano senza
     for c in colpi:
-        if not c.get("direzione") or "rimbalzo_trovato_x_m" in c:
+        if not c.get("direzione") or "rimbalzo_trovato_x_m" in c or mossa(c):
             continue
         nota = str(c.get("nota", ""))
         m = re.search(r"rimbalzo al frame (\d+)\)? a \(([-\d.]+); ([-\d.]+)\) m", nota)
@@ -1133,10 +1408,10 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
                       "rimbalzo_trovato_frame": int(m.group(1)), "rimbalzo_trovato_come": come})
             continue
         tn_c = punti_colpo(c)
-        r = rimbalzo_dopo_colpo(t, tn_c, cam, c, video, cap, altezza_img / 1080, altezza_img, usati)
+        r = rimbalzo_dopo_colpo(t, tn_c, cam_di(c), c, video, cap, altezza_img / 1080, altezza_img, usati)
         if r is None and c.get("colpo") != "servizio":
             # passo 6b: primo rimbalzo non visto, palla corta se si vede la serie dei rimbalzi dopo
-            pc = palla_corta_da_serie(t, tn, cam, c, usati, altezza_img / 1080, fine_di[int(c["frame"])])
+            pc = palla_corta_da_serie(t, tn, cam_di(c), c, usati, altezza_img / 1080, fine_di[int(c["frame"])])
             if pc is not None:
                 x, y, fb, quanti, frame_serie = pc
                 usati.update(frame_serie)       # i rimbalzi della serie non valgono per altri colpi
@@ -1156,11 +1431,13 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             continue
         x, y, fb, come = r
         usati.add(fb)
-        if (PUNTO4 and nota.startswith(NOTA_ESTESA) and c.get("velocita_uscita_kmh", "") == ""
-                and c.get("velocita_rimbalzo_kmh", "") == ""):
-            s4 = stima_da_contatto_esteso(t, tn_c, cam, c, x, y, fb, come)
+        if (PUNTO4 and c.get("velocita_uscita_kmh", "") == "" and c.get("velocita_rimbalzo_kmh", "") == ""
+                and (nota.startswith(NOTA_ESTESA) or contatto_coperto_breve(t, c) is not None)):
+            f_c4 = None if nota.startswith(NOTA_ESTESA) else contatto_coperto_breve(t, c)
+            s4 = stima_da_contatto_esteso(t, tn_c, cam_di(c), c, x, y, fb, come, f_c4)
             if s4 is not None:
-                applica(c, s4, "rimbalzo del passo 6 e contatto della ricerca estesa", come)
+                applica(c, s4, "rimbalzo del passo 6 e " + ("contatto della ricerca estesa" if f_c4 is None
+                                                           else "contatto a meta' del tratto coperto"), come)
                 continue
         c.update({"rimbalzo_trovato_x_m": round(x, 2), "rimbalzo_trovato_y_m": round(y, 2),
                   "rimbalzo_trovato_frame": int(fb), "rimbalzo_trovato_come": come})
@@ -1171,9 +1448,10 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
             print(f"frame {c['frame']} {c['colpo']}: punto del rimbalzo ({x:.1f}; {y:.1f}) m, frame {fb} ({come})"
                   + (f", darebbe \"{d}\"" if d and d != c["direzione"] else ""))
     cap.release()
-    aggiungi_media(t, colpi, verbose)
     if PUNTO_NEL_BUCO:
         correggi_punti_nel_buco(t, punti_colpo, cam, colpi, altezza_img, verbose)   # sulla traccia del colpo (B)
+    rimbalzo_nel_calcolo(t, colpi, cam_di, altezza_img, verbose)                    # passo 8: il rimbalzo nel calcolo
+    aggiungi_media(t, colpi, verbose)
     vu.aggiungi_soglie(colpi)
     vu.aggiungi_dentro_fuori(colpi)
     for c in colpi:                      # passo 6b: dalla serie di rimbalzi solo la zona, non dentro/fuori

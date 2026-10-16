@@ -25,9 +25,13 @@ Cosa compare per ogni colpo:
     ricostruito dalle curve prima e dopo (velocita_rimbalzo.py): margine circa +-20%;
   - sotto, in piccolo, "media X km/h": la velocita' media del volo, dal colpo
     al rimbalzo (velocita_media_kmh), se il rimbalzo e' stato trovato;
-  - "km/h non disponibile" con la direzione: la velocita' non si puo' misurare
-    (pallina coperta o mossa al colpo) ma la direzione si';
-  - "km/h non disponibile" in grigio: niente di affidabile.
+  - "uscita: non disponibile (pallina coperta al contatto)" con la direzione: la
+    velocita' non si puo' misurare (pallina coperta o mossa al colpo) ma la
+    direzione si'; la media del volo c'e' se il rimbalzo e' stato trovato;
+  - "uscita: non disponibile" in grigio con il perche' accanto: niente di
+    affidabile (misura scartata, pallina coperta, camera mossa).
+  Dal 16/10 (richiesta di Andrea) "uscita" e "media" hanno la stessa dimensione,
+  a meta' tra le due di prima.
   - sotto la direzione, dove e' caduta la pallina se il rimbalzo e' stato trovato:
     "dentro" con la fascia (profonda, media, corta, palla corta), "fuori: lunga", "fuori: larga"...;
     "palla corta (1o rimbalzo non visto)": la pallina e' morta davanti alla riga del servizio ma il
@@ -105,22 +109,33 @@ GRIGIO_FERMA = (170, 170, 170) # punti di TrackNet su palline ferme scartati
 VERDE_OK = (12, 163, 12)       # contatore: dentro
 ROSSO_KO = (59, 59, 208)       # contatore: fuori
 
-# stili delle righe dell'etichetta: (scala, spessore, grigio del testo)
-STILI = {"nome": (1.5, 3, 255), "valore": (2.0, 5, 255), "sotto": (1.0, 2, 215),
+# stili delle righe dell'etichetta: (scala, spessore, grigio del testo). Dal 16/10 (richiesta di Andrea) la
+# velocita' d'uscita e la media del volo hanno la stessa dimensione, a meta' tra le due di prima (2,0 e 1,0).
+STILI = {"nome": (1.5, 3, 255), "valore": (1.5, 4, 255), "sotto": (1.5, 4, 255),
          "riga": (1.1, 3, 255), "nota": (0.8, 2, 200)}
+
+
+def _segmenti(t, s):
+    """Una riga e' un testo con uno stile, oppure una lista di (testo, stile) disegnati uno dopo l'altro sulla
+    stessa riga (16/10: "uscita: non disponibile" con accanto il perche', piu' piccolo)."""
+    return [(t, s)] if isinstance(t, str) else list(t)
 
 
 def etichetta(fr, righe, colore):
     """
     righe: lista di (testo, stile, visibilita' 0-1). Una riga con visibilita' 0 tiene il suo posto ma
-    non si vede (compare piu' tardi, al rimbalzo); tra 0 e 1 e' in dissolvenza.
+    non si vede (compare piu' tardi, al rimbalzo); tra 0 e 1 e' in dissolvenza. Il testo puo' essere una
+    lista di (testo, stile): pezzi sulla stessa riga, ognuno con il suo stile (_segmenti).
     Le misure sono pensate per 1080 righe e si scalano con l'altezza del fotogramma (a 1080p identiche).
     """
     k = fr.shape[0] / 1080
     px = lambda v: int(round(v * k))
     stile = lambda s: (STILI[s][0] * k, max(1, int(round(STILI[s][1] * k))), STILI[s][2])
     x0, y0 = px(30), px(30)
-    dims = [cv2.getTextSize(t, F, stile(s)[0], stile(s)[1])[0] for t, s, _ in righe]
+    dims = []
+    for t, s, _ in righe:
+        pezzi = [cv2.getTextSize(tt, F, stile(ss)[0], stile(ss)[1])[0] for tt, ss in _segmenti(t, s)]
+        dims.append((sum(d[0] for d in pezzi) + px(12) * (len(pezzi) - 1), max(d[1] for d in pezzi)))
     W = max(d[0] for d in dims) + px(40)
     H = sum(d[1] for d in dims) + px(22) * len(dims) + px(20)
     ov = fr.copy()
@@ -132,14 +147,18 @@ def etichetta(fr, righe, colore):
         y += d[1] + px(22)
         if vis <= 0:
             continue
-        scala, spess, g = stile(s)
         if vis >= 1:
-            cv2.putText(fr, t, (x0 + px(25), y), F, scala, (g, g, g), spess, cv2.LINE_AA)
+            tela, yt = fr, y
         else:
             a, b = y - d[1] - px(6), y + px(10)   # solo la striscia della riga
-            ov = fr[a:b].copy()
-            cv2.putText(ov, t, (x0 + px(25), d[1] + px(6)), F, scala, (g, g, g), spess, cv2.LINE_AA)
-            fr[a:b] = cv2.addWeighted(ov, vis, fr[a:b], 1 - vis, 0)
+            tela, yt = fr[a:b].copy(), d[1] + px(6)
+        x = x0 + px(25)
+        for tt, ss in _segmenti(t, s):
+            scala, spess, g = stile(ss)
+            cv2.putText(tela, tt, (x, yt), F, scala, (g, g, g), spess, cv2.LINE_AA)
+            x += cv2.getTextSize(tt, F, scala, spess)[0][0] + px(12)
+        if vis < 1:
+            fr[a:b] = cv2.addWeighted(tela, vis, fr[a:b], 1 - vis, 0)
 
 
 def esito_rimbalzo(c):
@@ -178,7 +197,9 @@ def righe_colpo(c, n, fps):
     colore = COLORI.get(c["colpo"], (200, 200, 200))
     nome = ((c["colpo"] + (" " + c["dritto_tipo"] if c.get("dritto_tipo") else "")).upper(), "nome", 1)
     if c.get("velocita_uscita_kmh", "") != "":
-        righe = [nome, (f"uscita {riepilogo.corretta(c['velocita_uscita_kmh'])} km/h", "valore", 1)] + riga_media
+        # "circa" se la media del volo e' troppo bassa rispetto all'uscita (velocita_rimbalzo.py, passo 7)
+        circa = "circa " if str(c.get("velocita_fonte", "")).endswith("circa") else ""
+        righe = [nome, (f"uscita {circa}{riepilogo.corretta(c['velocita_uscita_kmh'])} km/h", "valore", 1)] + riga_media
         if c.get("direzione"):
             righe.append((c["direzione"], "riga", 1))
         nota = "margine circa +-20 km/h" + (" - calibrazione standard" if c.get("calibrazione") == "standard" else "")
@@ -190,14 +211,20 @@ def righe_colpo(c, n, fps):
         else:
             v, nota = f"circa {riepilogo.corretta(c['velocita_rimbalzo_kmh'])} km/h (dal rimbalzo)", "stima dal rimbalzo: margine circa +-15%"
         return [nome, (v, "valore", 1)] + riga_media + [(c["direzione"], "riga", 1)] + riga_esito + [(nota, "nota", 1)], colore
+    # niente velocita' d'uscita: "uscita: non disponibile" con accanto, piu' piccolo, il perche' (16/10)
     if c.get("direzione"):
-        # niente km/h, ma la direzione (direzione_nascosta.py o ricerca estesa)
-        perche = ("pallina mossa al colpo: solo direzione" if str(c.get("nota", "")).startswith("pallina mossa")
-                  else "pallina coperta al contatto: solo direzione")
-        return [nome, ("km/h non disponibile", "valore", 1), (c["direzione"], "riga", 1)] + riga_esito + [(perche, "nota", 1)], colore
-    motivo = ("misura non affidabile" if str(c.get("nota", "")).startswith("misura scartata")
-              else "pallina coperta dal giocatore")
-    return [nome, ("km/h non disponibile", "valore", 1), (motivo, "nota", 1)], (150, 150, 150)
+        # la direzione c'e' (direzione_nascosta.py o ricerca estesa); la media del volo, se il rimbalzo e' stato
+        # trovato, si mostra lo stesso
+        perche = ("(pallina mossa al colpo)" if str(c.get("nota", "")).startswith("pallina mossa")
+                  else "(pallina coperta al contatto)")
+        return ([nome, ([("uscita: non disponibile", "valore"), (perche, "nota")], "valore", 1)] + riga_media
+                + [(c["direzione"], "riga", 1)] + riga_esito), colore
+    if c.get("camera") == "eccessiva":           # camera.py: spostamento troppo grande rispetto alla calibrazione
+        motivo = "(camera mossa)"
+    else:
+        motivo = ("(misura non affidabile)" if str(c.get("nota", "")).startswith("misura scartata")
+                  else "(pallina coperta dal giocatore)")
+    return [nome, ([("uscita: non disponibile", "valore"), (motivo, "nota")], "valore", 1)], (150, 150, 150)
 
 
 def _blend(img, disegna, alfa):

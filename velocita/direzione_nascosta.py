@@ -87,6 +87,7 @@ import rf_ball_exit_speed as calcolo  # noqa: E402
 import palla_locale  # noqa: E402
 import velocita_uscita as vu  # noqa: E402
 import fotogrammi  # noqa: E402
+import camera  # noqa: E402
 from calibra_campo import camera_da_json, carica_per_video, leggi_fotogramma  # noqa: E402
 
 CERCA_DOPO_S = 0.75         # la pallina deve ricomparire entro 0,75 s da quando si perde
@@ -349,7 +350,9 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
     t["tempi"] = fotogrammi.tempi_reali(video, cartella_dati, t["fps"], verbose=False)
     classi = vu.leggi_colpi(os.path.join(cartella_dati, nome + "_colpi.csv"))
     cal, _ = carica_per_video(video, calibrazione)
-    cam = camera_da_json(cal)
+    cam_base = camera_da_json(cal)
+    tab_cam = camera.carica(cartella_dati, video)      # la calibrazione che segue la camera (camera.py)
+    cam = cam_base
     altezza_img = leggi_fotogramma(video, 0)[0].shape[0]
     n = len(t["frame"])
     tracknet = {int(f): tuple(p) for f, p, v in zip(t["frame"], t["palla"], t["vista"]) if v}
@@ -411,6 +414,13 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         for k in campi_direzione:
             c.pop(k, None)
         c["nota"] = NOTA_BASE
+        # camera.py: calibrazione corretta per il fotogramma della riga; con la camera troppo mossa niente direzione
+        liv, px_cam = camera.livello(tab_cam, fc, altezza_img)
+        c["camera"], c["camera_px"] = liv, round(px_cam)
+        if liv == "eccessiva":
+            c["nota"] = NOTA_BASE + f"; camera mossa ({px_cam:.0f} px a 1080p): direzione non calcolata"
+            continue
+        cam = camera.camera_al_frame(cam_base, tab_cam, fc)
         finestra = [(a, b) for a, b in finestre if a - vu.MARGINE_FINESTRA <= fc <= b + vu.MARGINE_FINESTRA]
         if not finestra:
             continue

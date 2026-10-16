@@ -38,6 +38,12 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
 - `fotogrammi.py` - riconosce i video convertiti con fotogrammi ripetuti (es.
   50 -> 60 fps) e da' a ogni fotogramma il suo istante vero. Sui video del
   telefono non si attiva.
+- `camera.py` - la calibrazione che segue la camera (16 ottobre): misura, per
+  ogni fotogramma, di quanto l'immagine si e' spostata rispetto al fotogramma
+  della calibrazione e corregge la calibrazione di conseguenza; se lo
+  spostamento e' troppo grande applica la regola "camera mossa" (vedi "La
+  calibrazione che segue la camera"). Lo usano gli altri tre programmi; da
+  solo serve solo per rifare `<video>_camera.csv`.
 - `velocita_uscita.py` - il programma principale: trova i colpi e calcola
   velocita' e direzione.
 - `direzione_nascosta.py` - solo per i colpi in cui la pallina e' coperta dal
@@ -49,7 +55,10 @@ Spiegazione completa di come funziona: `COME_FUNZIONA.md` in questa cartella.
   parte e sul video compare come "circa ... km/h (dal rimbalzo)". Per tutti
   gli altri colpi con una direzione cerca solo il punto del rimbalzo, per la
   mappa; se il primo rimbalzo non si vede, riconosce la palla corta dalla
-  serie dei rimbalzi dopo (6 ottobre).
+  serie dei rimbalzi dopo (6 ottobre). Dal 16 ottobre, quando trova il
+  rimbalzo di un colpo con il contatto visto, rifa' il calcolo della
+  velocita' con il rimbalzo dentro (vedi "Il rimbalzo nel calcolo") e, per i
+  colpi con il contatto coperto, prova la misura vera dai punti in uscita.
 - `disegna_velocita.py` - riscrive il video con colpo, km/h (e sotto, in
   piccolo, la velocita' media del volo), direzione e una piccola mappa del
   campo, con il punto in cui la pallina rimbalza; in alto a destra il
@@ -177,7 +186,10 @@ python velocita/disegna_velocita.py --video inputs/<video>.mp4
 ```
 
 Risultati: `outputs/dati/<video>_velocita.csv` (un colpo per riga),
-`outputs/dati/<video>_campo.jpg` (controllo della calibrazione),
+`outputs/dati/<video>_campo.jpg` (controllo della calibrazione, corretta per
+il primo fotogramma se la camera si e' mossa), `outputs/dati/<video>_camera.csv`
+(lo spostamento della camera per fotogramma, `camera.py`: si scrive la prima
+volta e poi si riusa; cancellarlo per rifarlo),
 `outputs/video/<video>_velocita.mp4` e, da `disegna_velocita.py`, le metriche
 della sessione: `outputs/dati/<video>_riepilogo.csv` (una riga per tipo di
 colpo piu' il totale), `<video>_riepilogo.json` e `<video>_scheda.png` (la
@@ -255,7 +267,9 @@ salvata, senza finestre (anche su Colab).
    fotogrammi, a passo regolare, es. uno ogni 6 in un video a 50 fps portato
    a 60), i ripetuti si tolgono e si usano gli istanti veri: sul dritto al 275
    di alcaraz l'errore della traiettoria scende da 2,8 a 1,1 px (147 -> 138
-   km/h). Sugli altri video non cambia niente.
+   km/h). Sugli altri video non cambia niente. La calibrazione usata e'
+   quella corretta per il fotogramma del contatto (`camera.py`, 16 ottobre):
+   con il telefono fermo e' identica a quella del file.
 5. **Direzione.** Angolo della pallina rispetto alle righe laterali; la
    direzione viene prolungata fino a 21 m (tra riga del servizio e fondo
    lontani) per vedere in che meta' arriva:
@@ -311,7 +325,12 @@ salvata, senza finestre (anche su Colab).
    mostrarlo. Velocita' e direzione NON si scrivono quando la traiettoria 3D
    non spiega i punti della pallina (errore sopra 6 px, riportato a 1080p;
    sui colpi buoni e' 1-3 px), oppure il risultato non e' da tennis:
-   velocita' fuori da 30-250 km/h, oppure un angolo oltre il limite. Nel CSV
+   velocita' fuori da 30-250 km/h, sopra il tetto del tipo di colpo
+   (`TETTO_KMH`, deciso da Andrea il 16 ottobre: dritto e rovescio 155 km/h,
+   servizio 240; sinner_final_test aveva un dritto a 193 e draper_djokovic
+   uno a 190, entrambi colpi quasi lungo la linea di vista della camera, dove
+   la profondita' e' mal condizionata: nota "fuori scala per un dritto"),
+   oppure un angolo oltre il limite. Nel CSV
    la riga resta, con `punti_usati`, `errore_px` e la nota "misura scartata:
    ..." con i motivi; sul video compare "km/h non disponibile - misura non
    affidabile". Succede quando i punti seguiti non sono la pallina colpita:
@@ -354,6 +373,60 @@ salvata, senza finestre (anche su Colab).
 
 Tutte le soglie sono in cima al file.
 
+## La calibrazione che segue la camera (16 ottobre)
+
+La calibrazione del campo e' fatta su UN fotogramma. Se la camera si sposta
+durante il video (telefono urtato, ripresa a mano: sinner_final_test, girato
+dalle tribune, si sposta fino a 180 px a 4K in 35 s) tutto quello che passa
+dalla calibrazione sbaglia: rimbalzi che finiscono vicino alla rete, "palle
+corte" che non esistono, medie fino al rimbalzo basse (sinner 1660: 131 km/h
+con media 58), dentro/fuori a caso. I km/h d'uscita soffrono meno, perche'
+usano i 20 fotogrammi vicino al giocatore, dove l'errore residuo e' piccolo.
+
+`camera.py` misura per ogni fotogramma di quanto l'immagine si e' spostata
+rispetto al fotogramma della calibrazione (quello cliccato a mano, o i
+secondi della calibrazione geometrica, "mediana da 11.5 s"): allineamento
+ECC (`cv2.findTransformECC`, sola traslazione) della FASCIA ALTA
+dell'immagine (campo lontano, rete, recinzione, tribune: cose ferme) ridotta
+a 480 px di larghezza, fotogramma dopo fotogramma partendo dallo spostamento
+del precedente. La fascia bassa, con il giocatore vicino grande e in
+movimento, non si usa: con tutta l'immagine la misura saltava. Il risultato va
+in `outputs/dati/<video>_camera.csv` (frame, dx, dy in pixel del video,
+risposta della correlazione) e lo scrive `velocita_uscita.py` la prima volta
+(una lettura in piu' del video: 88 s per i 2158 fotogrammi 4K di sinner, al
+ritmo della decodifica); `direzione_nascosta.py` e `velocita_rimbalzo.py` lo
+leggono. Lo spostamento si applica alla calibrazione spostando il centro
+dell'immagine (`camera_al_frame`): per piccole rotazioni del telefono
+l'immagine trasla quasi rigidamente. Non vale per zoom o rotazioni grandi, e
+per quelli c'e' la regola sotto.
+
+**Regola "camera mossa"** (decisa con Andrea), spostamento riportato a 1080p
+rispetto al fotogramma della calibrazione:
+
+- fino a 60 px: corretto, tutto si mostra;
+- oltre 60 px ("moderata"): i km/h si mostrano, ma niente rimbalzo,
+  dentro/fuori, profondita', media del volo, punto sulla mappa (la nota
+  dice "camera mossa (N px a 1080p): rimbalzo e dentro/fuori non
+  calcolati");
+- oltre 150 px, o correlazione sotto 0,5 ("eccessiva"): nessun numero che
+  dipende dalla calibrazione. Resta il colpo con il tipo; sul video "km/h
+  non disponibile - camera mossa: misura non mostrata".
+
+Nel CSV: colonna `camera` (ok / moderata / eccessiva) e `camera_px` (lo
+spostamento a 1080p). `CORREGGI = False` in `camera.py` spegne tutto (come
+prima). Con il telefono su treppiede e' sempre "ok" (Nicola: 1 px).
+
+Provato su: Nicola identico (119 km/h); zverev_djokovic (ripresa TV, 6-9 px)
+129 e 120 km/h invece di 129 e 121; draper_djokovic (18-45 px, sempre "ok")
+identico tranne 79 -> 78; sinner_final_test: vedi `claude/` nel progetto
+(analisi del 16 ottobre).
+
+Limiti: una lettura in piu' del video per ogni video nuovo; la fascia alta
+deve avere qualcosa di fermo (con la camera che inquadra solo il campo e
+l'avversario che si muove li' la correlazione scende e la riga diventa
+"eccessiva" anche a camera ferma: controllare `<video>_camera.csv`); zoom e
+rotazioni grandi non si correggono.
+
 ## Velocita' stimata dal rimbalzo
 
 `velocita_rimbalzo.py` si esegue dopo `direzione_nascosta.py` e guarda solo i
@@ -378,10 +451,29 @@ stesso modello del calcolo normale) che la spiega.
    video, zero rimbalzi e zero dentro/fuori (jimmy_manson_2 a 24,8 s).
 3. Velocita' e direzione dalla traiettoria giocatore -> rimbalzo; la
    direzione viene dal rimbalzo misurato.
+3b. (16 ottobre, `RECUPERO_USCITA`) **Misura vera dai punti in uscita.** Su
+   sinner_final_test le 3 velocita' "dal rimbalzo" su 15 colpi erano tutte
+   colpi in cui TrackNet perde la pallina 5-10 fotogrammi al contatto e la
+   riprende subito dopo: il contatto trovato dalla posa era sbagliato (83
+   invece di ~91) ma i punti in uscita c'erano. Allora, trovato il rimbalzo
+   con i passi 1-3, si prova il calcolo normale (`exit_speed`) sui punti di
+   TrackNet in uscita, con il contatto mezzo frame prima del primo punto
+   (come nella stima) e il rimbalzo nel calcolo (posizione e tempo di volo).
+   Se passa gli stessi controlli della misura normale (errore <= 6 px a
+   1080p, 30-250 km/h, tetti, angolo) e la traiettoria passa davvero dal
+   rimbalzo (entro 0,6 m e 0,1 s), la riga ha `velocita_uscita_kmh` con
+   fonte "misurata, contatto dal rimbalzo"; la stima resta in
+   `velocita_rimbalzo_kmh` per confronto. Se il contatto vero e' piu' di
+   qualche frame prima del primo punto, i punti e il rimbalzo non tornano con
+   la profondita' del giocatore e il controllo scarta: resta la stima, con la
+   nota "misura dai punti in uscita scartata: ...".
 
-Nel CSV la stima va nella colonna `velocita_rimbalzo_kmh` (quella di
-`velocita_uscita_kmh` non viene mai toccata); sul video compare "circa ...
-km/h (dal rimbalzo)" con margine circa +-15%. Dove anche il calcolo normale
+Nel CSV la stima va nella colonna `velocita_rimbalzo_kmh`; sul video compare
+"circa ... km/h (dal rimbalzo)" con margine circa +-15%. Fino al 15 ottobre
+`velocita_uscita_kmh` non veniva mai toccata; dal 16 il rimbalzo trovato
+entra anche nel calcolo normale (vedi "Il rimbalzo nel calcolo") e, dopo la
+stima dei passi 1-3, si prova la misura vera dai punti in uscita (3b).
+Dove anche il calcolo normale
 funziona, i due metodi vanno abbastanza d'accordo: alcaraz, dritto al 275,
 138 km/h dal calcolo normale e 130 dal rimbalzo; Djokovic, dritto al 65, 123
 e 145 dal rimbalzo trovato con il colore (qui i passi 1-3 non trovano
@@ -437,6 +529,19 @@ cambia solo Giorgio, dritto a 39,8 s, da solo direzione a circa 108 km/h
 gia': con il contatto della riga si ottiene lo stesso valore o fino al 9% in
 meno (il contatto della riga e' 2-5 fotogrammi prima). `PUNTO4 = False` in
 cima a `velocita_rimbalzo.py` lo spegne.
+Dal 16 ottobre lo stesso vale per i colpi con il contatto COPERTO dal corpo
+(`direzione_nascosta.py`, nota "pallina persa al frame A, ricompare al B"):
+se il passo 6 trova il rimbalzo e il tratto coperto dura al massimo 0,3 s
+(`COPERTO_MAX_S`), il contatto si prende a meta' del tratto, come gia' nei
+passi 4 e 5. L'istante del contatto e' incerto di meta' tratto, quindi la
+nota scrive il margine (per esempio "+-25%: contatto coperto tra i frame 52 e
+70, preso a meta'") e sul video resta "circa ... km/h (dal rimbalzo)" con la
+media del volo sotto. E' quello che Andrea chiedeva per il primo dritto di
+jimmy_mnason_final_test (direzione ma nessun numero): li' pero' il rimbalzo
+non si trova lo stesso, perche' con il telefono a 1,5 m la pallina tocca terra
+dietro la fascia bianca della rete e ricompare 25 fotogrammi dopo (il
+rimbalzo ricostruito accetta buchi fino a 20, e anche con 30 le curve non si
+incontrano): vedi "Limiti", telefono basso.
 
 Il rimbalzo trovato (passi 1-6) e' nelle colonne `rimbalzo_trovato_x_m`,
 `rimbalzo_trovato_y_m`, `rimbalzo_trovato_frame` e `rimbalzo_trovato_come`
@@ -681,11 +786,75 @@ resta com'e') e la nota lo dice. Succede su swing_vision 412: 90 km/h
 misurati, media fino al rimbalzo 93 km/h; dalla media il dritto sarebbe
 intorno ai 120 km/h, quindi i 90 sono probabilmente bassi. Senza rimbalzo
 trovato la media non c'e' (per esempio il servizio di Nicola, dove c'e' solo
-il rimbalzo previsto).
+il rimbalzo previsto). Dal 16 ottobre vale anche il contrario: se la media e'
+sotto il 65% dell'uscita (`RAPPORTO_MEDIA_MIN`) l'uscita e' gonfiata e si
+segna "circa" (vedi "Da dove viene la velocita'"). Con la camera mossa
+(`camera` moderata o eccessiva) il rimbalzo non si cerca e la media non c'e'.
 
 Valori calcolati (senza la correzione): alcaraz 141 servizio 138 km/h (uscita circa 166), 275 105 (138), 418
 113 (circa 149), 577 121 (circa 152), 709 94 (circa 118), 867 97 (circa 128),
 1152 118 (circa 152); Djokovic 65 107 (123); swing_vision 553 92 (circa 120).
+
+### Il rimbalzo nel calcolo (16 ottobre)
+
+8. (`velocita_uscita.RIMBALZO_NEL_CALCOLO`) Il calcolo normale usa solo i
+   20 fotogrammi dopo il contatto. Quando la pallina va quasi lungo la linea
+   di vista della camera si muove poco nell'immagine per metro di
+   profondita', e la profondita' e' mal condizionata: la stessa traiettoria
+   nei pixel si spiega con una pallina lenta e vicina o veloce e lontana
+   (sinner_final_test, dritto 786: 193 km/h con 2 px di errore, media fino al
+   rimbalzo 126). Il rimbalzo trovato risolve l'ambiguita' perche' e' a terra
+   (posizione esatta dalla calibrazione) e ha un istante: il tempo di volo
+   lega la velocita' alla distanza. Per i colpi con il contatto visto (la
+   traccia del calcolo normale, salvata nel JSON) e il rimbalzo trovato da
+   TrackNet o dal colore (passi 1-6; non "serie" ne' "ricostruito") il calcolo
+   si rifa' con il rimbalzo come vincolo di posizione (entro 0,25 m) e di
+   tempo (entro 1 frame): `exit_speed(..., bounce_xy, bounce_frame)`.
+   Vale anche per le righe in cui la misura era stata scartata (per esempio
+   sopra il tetto). Il nuovo risultato si prende solo se passa i controlli
+   della misura normale E la traiettoria trovata passa davvero dal rimbalzo
+   (`RIMBALZO_COMPATIBILE`: entro 0,6 m e 0,1 s, cioe' 6 frame a 60 fps e 3
+   a 30: il frame del rimbalzo di TrackNet e' il punto piu' basso visto, 1-2
+   frame dopo il tocco, piu' un po' di rotazione): allora diventa
+   `velocita_uscita_kmh` con fonte "misurata con rimbalzo" e la misura senza
+   rimbalzo resta nella colonna `velocita_libera_kmh`. Se no resta tutto
+   com'era e la nota dice perche'. Il modello non ha la rotazione: un dritto
+   in forte topspin scende prima di una pallina senza rotazione, e il calcolo
+   non riesce a passare per il rimbalzo (zverev_djokovic, dritto 65: manca di
+   2,3 m e 11 frame -> resta 129 km/h senza rimbalzo; sinner_final_test:
+   7-13 frame su tutti i dritti). Il servizio di Nicola invece passa (0,5 m,
+   0,7 frame): 119 -> 105 km/h, con la media del volo 88 km/h (SwingVision
+   dice 83 di media, vedi "Correzione delle velocita' mostrate"); su
+   jimmy_mnason_final_test il dritto 237 passa (0,3 m, 4,8 frame): 103 -> 129,
+   e li' la misura senza rimbalzo era sicuramente bassa, perche' la media del
+   volo era 123. Risultati sugli altri video nel documento del 16 ottobre nel
+   progetto (`claude/`).
+
+### Da dove viene la velocita' (colonna `velocita_fonte`, 16 ottobre)
+
+L'ordine deciso con Andrea: si usa tutto quello che c'e'. Dalla fonte piu'
+sicura alla meno:
+
+| `velocita_fonte` | quando | colonne |
+|---|---|---|
+| misurata con rimbalzo | contatto visto E rimbalzo trovato compatibile (passo 8) | `velocita_uscita_kmh`; senza rimbalzo in `velocita_libera_kmh` |
+| misurata | contatto visto, rimbalzo non trovato o non compatibile (il calcolo di sempre) | `velocita_uscita_kmh` |
+| misurata, contatto dal rimbalzo | contatto coperto, rimbalzo visto, misura dai punti in uscita che regge (passo 3b) | `velocita_uscita_kmh`; la stima in `velocita_rimbalzo_kmh` |
+| stimata dal rimbalzo | contatto coperto o misura scartata, rimbalzo visto da TrackNet o dal colore (passi 1-4) | `velocita_rimbalzo_kmh` |
+| stimata, rimbalzo ricostruito | come sopra con il rimbalzo ricostruito (passo 5) | `velocita_rimbalzo_kmh` |
+| (vuota) | solo direzione, o niente | - |
+
+Se la media del volo e' sotto il 65% della velocita' d'uscita
+(`RAPPORTO_MEDIA_MIN`) la fonte prende ", circa" e sul video compare "uscita
+circa N km/h": la pallina in volo rallenta, ma non cosi' tanto (sui colpi
+buoni la media e' il 75-90% dell'uscita), quindi la misura d'uscita e'
+gonfiata o il rimbalzo non e' il suo. Sul video la fonte non si scrive:
+"uscita N km/h" per le prime tre, "circa N km/h (dal rimbalzo / rimbalzo
+ricostruito)" per le stime; senza velocita' "uscita: non disponibile" con
+accanto, piu' piccolo, il perche' (pallina coperta al contatto, pallina mossa
+al colpo, misura non affidabile, camera mossa). Dal 16 ottobre (richiesta di
+Andrea) "uscita" e "media" sul video hanno la stessa dimensione, a meta' tra
+le due di prima.
 
 ## Il video: animazioni, contatore e scheda finale (2 ottobre)
 
@@ -824,6 +993,17 @@ media del volo) e la nostra media fino al rimbalzo previsto e' circa 90-98,
 cioe' l'8-18% in piu'. Il modo giusto di fissare il numero e' una sessione
 con SwingVision (o un radar) accanto: si confronta la nostra media del volo
 con il suo numero, colpo per colpo.
+Dal 16 ottobre c'e' un secondo indizio: con il rimbalzo trovato nel calcolo
+(vedi "Il rimbalzo nel calcolo") lo stesso servizio di Nicola da' 105 km/h
+invece di 119, cioe' quasi esattamente 119 x 0,85 = 101, e la media del volo
+misurata e' 88 (SwingVision 83). Quindi la correzione a occhio corregge
+proprio l'errore che il rimbalzo toglie: alle velocita' "misurata con
+rimbalzo" applicare ancora lo 0,85 vorrebbe dire correggere due volte (89
+km/h). Per ora `CORREZIONE_VELOCITA` si applica a tutte come prima: la
+decisione (0,85 solo alle misure senza rimbalzo? 1,0 per tutte, visto che il
+rimbalzo ora corregge i colpi che gonfiavano?) e' da prendere guardando i
+numeri dei video di prova, ed e' scritta come questione aperta nel
+documento del 16 ottobre nel progetto.
 
 ## Dritto inside-out e inside-in (2 ottobre)
 
@@ -1214,13 +1394,23 @@ su altri.
   Esempio: alcaraz, rovescio al 1015/1017, rimbalzo e risposta
   dell'avversario dietro la fascia bianca (fotogrammi 1070-1071). Per vedere
   la riga di fondo lontana sopra la rete il telefono dovrebbe stare ad almeno
-  circa 2,4 m.
+  circa 2,4 m. Con il telefono BASSO e' peggio: jimmy_mnason_final_test
+  (camera a 1,5 m) perde la pallina dietro la fascia per 20-25 fotogrammi su
+  3 dritti su 8 (nessun rimbalzo, nessuna media) e un quarto rimbalzo e'
+  visto cosi' tardi che la media viene piu' alta dell'uscita.
 - Metriche: la rete non si riconosce (un colpo in rete e' "esito non
   visto"); la correzione del 15% delle velocita' e' a occhio, da verificare; i falsi colpi senza dati sono esclusi dal conto, ma un falso colpo
   con una direzione verrebbe contato. Media del volo solo con il rimbalzo
   trovato: per i colpi misurati senza rimbalzo si potrebbe calcolare dal
   volo previsto (come il rimbalzo previsto del servizio), non fatto.
+- Camera che si muove: corretta solo come traslazione dell'immagine
+  (`camera.py`); zoom e rotazioni grandi no, e li' vale la regola "camera
+  mossa". La misura costa una lettura in piu' del video.
+- Il rimbalzo nel calcolo vale solo se la traiettoria senza rotazione ci
+  passa: con il topspin forte resta la misura senza rimbalzo, che per i
+  colpi lungo la linea di vista puo' essere gonfiata (resta il tetto per
+  tipo di colpo e il "circa" dalla media del volo).
 - Da fare: avviso automatico quando le righe del campo non coincidono con la
-  calibrazione standard, rilevamento del rimbalzo come vincolo, dimensione
-  apparente della pallina come misura di distanza, audio, rotazione nel
-  modello, fine-tuning di TrackNet.
+  calibrazione standard, dimensione apparente della pallina come misura di
+  distanza, audio, rotazione nel modello, verifica della correzione 0,85 con
+  le velocita' "con rimbalzo" (vedi "Correzione delle velocita' mostrate").
