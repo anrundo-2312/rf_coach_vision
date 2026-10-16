@@ -11,8 +11,8 @@ direzione_nascosta.py, velocita_rimbalzo.py), e per il tracking della pallina
 <video>_tracking.csv e <video>_palline_ferme.csv, e scrive
 outputs/video/<video>_velocita.mp4 in H.264, cosi' si vede anche nel browser.
 Il video di partenza e' quello originale: niente px/s. Le velocita' scritte
-sono quelle calcolate per riepilogo.CORREZIONE_VELOCITA (0,85: il 15% in meno,
-deciso dall'utente il 2 ottobre); nel CSV dei colpi restano quelle calcolate.
+sono quelle calcolate per riepilogo.CORREZIONE_VELOCITA: dal 17 ottobre 1.0,
+nessuna correzione (dal 2 al 16 ottobre era 0,85, il 15% in meno).
 Con riepilogo.py
 scrive anche, in outputs/dati, <video>_riepilogo.csv/.json e
 <video>_scheda.png (le metriche della sessione e la scheda per l'allievo).
@@ -23,8 +23,10 @@ Cosa compare per ogni colpo:
     (velocita_rimbalzo.py), meno precisa: margine circa +-15%;
   - "circa X km/h (rimbalzo ricostruito)": il rimbalzo era coperto ed e' stato
     ricostruito dalle curve prima e dopo (velocita_rimbalzo.py): margine circa +-20%;
-  - sotto, in piccolo, "media X km/h": la velocita' media del volo, dal colpo
-    al rimbalzo (velocita_media_kmh), se il rimbalzo e' stato trovato;
+  - sotto, "media X km/h": la velocita' media del volo, dal colpo al rimbalzo
+    (velocita_media_kmh), se il rimbalzo e' stato trovato; "media circa X km/h"
+    se il rimbalzo non si vede ed e' stimata dalla traiettoria calcolata
+    (velocita_rimbalzo.py, passo 7b, dal 17/10);
   - "uscita: non disponibile (pallina coperta al contatto)" con la direzione: la
     velocita' non si puo' misurare (pallina coperta o mossa al colpo) ma la
     direzione si'; la media del volo c'e' se il rimbalzo e' stato trovato;
@@ -191,7 +193,10 @@ def righe_colpo(c, n, fps):
     """(righe dell'etichetta, colore) per un colpo, all'istante n."""
     vis = comparsa(c, n, fps)
     media = c.get("velocita_media_kmh", "")
-    riga_media = [(f"media {riepilogo.corretta(media)} km/h", "sotto", vis)] if media not in ("", None) else []
+    # "media circa" se e' dalla traiettoria calcolata (velocita_rimbalzo.py, passo 7b, 17/10)
+    circa_m = "circa " if c.get("velocita_media_fonte") == "stimata dal modello" else ""
+    riga_media = ([(f"media {circa_m}{riepilogo.corretta(media)} km/h", "sotto", vis)]
+                  if media not in ("", None) else [])
     e = esito_rimbalzo(c)
     riga_esito = [(e, "riga", vis)] if e else []
     colore = COLORI.get(c["colpo"], (200, 200, 200))

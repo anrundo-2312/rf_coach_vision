@@ -27,8 +27,10 @@ ritmo della decodifica); direzione_nascosta.py e velocita_rimbalzo.py lo
 leggono. Se il file manca e il video non si apre, niente correzione: tutto
 come prima.
 
-REGOLA "CAMERA MOSSA" (decisa con Andrea il 16/10). Spostamento riportato a
-1080p, rispetto al fotogramma della calibrazione:
+REGOLA "CAMERA MOSSA" (decisa con Andrea il 16/10; il 17/10 la soglia della
+"moderata" e' passata da 60 a 100 px: con il treppiede non cambia niente, con il
+telefono in mano tornano rimbalzo, dentro/fuori e media su piu' colpi).
+Spostamento riportato a 1080p, rispetto al fotogramma della calibrazione:
   - fino a MOSSA_MODERATA_PX: corretto, tutto si mostra;
   - oltre MOSSA_MODERATA_PX ("moderata"): i km/h si mostrano (vengono dai
     primi 20 fotogrammi vicino al giocatore, dove l'errore residuo e'
@@ -58,7 +60,7 @@ from calibra_campo import carica_per_video  # noqa: E402
 LARGHEZZA = 480            # l'immagine ridotta su cui si misura lo spostamento
 FASCIA_ALTA = 0.55         # parte alta dell'immagine usata per l'allineamento (il giocatore vicino sta sotto)
 ITERAZIONI = 30            # dell'allineamento ECC per fotogramma
-MOSSA_MODERATA_PX = 60     # a 1080p: oltre, niente rimbalzo / dentro-fuori / mappa
+MOSSA_MODERATA_PX = 100    # a 1080p: oltre, niente rimbalzo / dentro-fuori / mappa (60 fino al 16/10)
 MOSSA_ECCESSIVA_PX = 150   # a 1080p: oltre, nessun numero dalla calibrazione
 RISPOSTA_MIN = 0.5         # coefficiente ECC piu' basso di cosi' = allineamento inaffidabile (= eccessiva)
 CORREGGI = True            # False = come prima: nessuna correzione e nessuna regola

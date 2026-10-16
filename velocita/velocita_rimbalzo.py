@@ -288,7 +288,7 @@ CAMPI_TROVATO = ["rimbalzo_trovato_x_m", "rimbalzo_trovato_y_m", "rimbalzo_trova
 _i = vu.CAMPI.index("rimbalzo_y_m") + 1
 CAMPI = vu.CAMPI[:_i] + CAMPI_TROVATO + vu.CAMPI[_i:]
 _i = CAMPI.index("velocita_rimbalzo_kmh") + 1
-CAMPI = CAMPI[:_i] + ["velocita_media_kmh"] + CAMPI[_i:]      # passo 7
+CAMPI = CAMPI[:_i] + ["velocita_media_kmh", "velocita_media_fonte"] + CAMPI[_i:]      # passi 7 e 7b
 _i = CAMPI.index("profondita") + 1
 CAMPI = CAMPI[:_i] + ["rimbalzi_prima_servizio"] + CAMPI[_i:]  # passo 6b
 
@@ -1085,6 +1085,11 @@ def direzione_dal_rimbalzo(riga, x, y):
 
 # ------------------------------------------------------------------ passo 7
 NOTA_MEDIA = "media fino al rimbalzo"
+# passo 7b (17/10, richiesta di Andrea: la media sempre): se il rimbalzo non si vede, la media del volo dalla
+# traiettoria calcolata (velocita_uscita.media_dal_modello). velocita_media_fonte dice da dove viene.
+MEDIA_DAL_MODELLO = True    # False = come prima: media solo con il rimbalzo trovato
+FONTE_MEDIA_MISURATA = "misurata"                # dal rimbalzo trovato: distanza / tempo di volo
+FONTE_MEDIA_MODELLO = "stimata dal modello"      # dalla traiettoria calcolata (senza rotazione): "media circa"
 
 
 def recupera_uscita(t, cam, c, altezza_img, verbose=False):
@@ -1180,6 +1185,7 @@ def scrivi_misura(c, r, piedi, angolo, x_arr, direzione, usati, traccia, fonte):
               "contatto_y_m": round(float(r["impact_xyz_m"][1]), 2),
               "contatto_z_m": round(float(r["impact_xyz_m"][2]), 2),
               "punti_usati": r["n_points"], "errore_px": round(r["rms_px"], 1),
+              "_media_modello_kmh": r.get("_media_modello_kmh"),       # passo 7b, della misura nuova
               "_punti": [(f, *traccia[f][:2]) for f in usati]})
 
 
@@ -1288,10 +1294,43 @@ def aggiungi_media(t, colpi, verbose=False):
                   + (f", solo il {rapporto:.0%} dell'uscita: circa" if rapporto < vu.RAPPORTO_MEDIA_MIN else ""))
 
 
+def togli_media_modello(colpi):
+    """Passo rieseguito: le medie dal modello di un giro precedente si tolgono subito, cosi' se ora il rimbalzo si
+    trova vale la media misurata."""
+    for c in colpi:
+        if c.get("velocita_media_fonte") == FONTE_MEDIA_MODELLO:
+            c.pop("velocita_media_kmh", None)
+        c.pop("velocita_media_fonte", None)
+
+
+def media_dal_modello(colpi, verbose=False):
+    """
+    Passo 7b (17/10): la media del volo per ogni colpo con la velocita' d'uscita. Se il passo 7 (o la stima dal
+    rimbalzo) l'ha misurata, fonte FONTE_MEDIA_MISURATA. Se no, con MEDIA_DAL_MODELLO, quella della traiettoria
+    calcolata (_media_modello_kmh di velocita_uscita.py, o della misura rifatta nei passi 3b e 8), fonte
+    FONTE_MEDIA_MODELLO: vale anche con la camera "moderata" (i km/h si mostrano, e questa media viene dagli
+    stessi punti, non dal campo lontano). Mai piu' alta dell'uscita.
+    """
+    for c in colpi:
+        if c.get("velocita_media_kmh", "") not in ("", None):
+            c["velocita_media_fonte"] = FONTE_MEDIA_MISURATA
+            continue
+        if not MEDIA_DAL_MODELLO or c.get("velocita_uscita_kmh", "") in ("", None):
+            continue
+        m = c.get("_media_modello_kmh")
+        if m in (None, "") or not 0 < float(m) <= float(c["velocita_uscita_kmh"]):
+            continue
+        c["velocita_media_kmh"] = int(m)
+        c["velocita_media_fonte"] = FONTE_MEDIA_MODELLO
+        if verbose:
+            print(f"frame {c['frame']} {c['colpo']}: media del volo dal modello {int(m)} km/h (rimbalzo non visto)")
+
+
 def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=True, mano="auto"):
     nome = os.path.splitext(os.path.basename(video))[0]
     p_json = os.path.join(cartella_dati, nome + "_velocita_punti.json")
     colpi = json.load(open(p_json))
+    togli_media_modello(colpi)                      # passo 7b di un giro precedente
     t = vu.leggi_tracking(os.path.join(cartella_dati, nome + "_tracking.csv"))
     t["tempi"] = fotogrammi.tempi_reali(video, cartella_dati, t["fps"], verbose=False)
     cal, _ = carica_per_video(video, calibrazione)
@@ -1452,6 +1491,7 @@ def aggiorna(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
         correggi_punti_nel_buco(t, punti_colpo, cam, colpi, altezza_img, verbose)   # sulla traccia del colpo (B)
     rimbalzo_nel_calcolo(t, colpi, cam_di, altezza_img, verbose)                    # passo 8: il rimbalzo nel calcolo
     aggiungi_media(t, colpi, verbose)
+    media_dal_modello(colpi, verbose)                                               # passo 7b: la media sempre
     vu.aggiungi_soglie(colpi)
     vu.aggiungi_dentro_fuori(colpi)
     for c in colpi:                      # passo 6b: dalla serie di rimbalzi solo la zona, non dentro/fuori

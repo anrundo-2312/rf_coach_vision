@@ -28,7 +28,9 @@ Regole (decise il 2 ottobre):
 - velocita' d'uscita: misurate (velocita_uscita.py) e stimate dal rimbalzo
   (velocita_rimbalzo.py, circa +-15-20%) insieme; si dice quante sono le une e
   le altre. Velocita' media del volo: la colonna velocita_media_kmh (distanza
-  dal contatto al rimbalzo / tempo di volo, velocita_rimbalzo.py passo 7).
+  dal contatto al rimbalzo / tempo di volo, velocita_rimbalzo.py passo 7; dal
+  17/10, se il rimbalzo non si vede, stimata dalla traiettoria calcolata, passo
+  7b: volo_stimate dice quante);
 - palle corte: i dritti e rovesci dentro con profondita' "palla corta" piu'
   quelle riconosciute dalla serie di rimbalzi (velocita_rimbalzo.py passo 6b:
   primo rimbalzo non visto, quindi esito "non visto");
@@ -43,6 +45,14 @@ CORREZIONE_VELOCITA = 0,85, cioe' il 15% in meno: all'utente i valori
 sembravano un po' alti. E' una stima a occhio, da verificare (per esempio con
 SwingVision accanto). Il calcolo non cambia: in <video>_velocita.csv restano i
 valori calcolati. Con 1.0 non si corregge niente.
+Dal 17 ottobre (decisione di Andrea) CORREZIONE_VELOCITA = 1.0: con la media del
+volo su ogni colpo (passo 7b) l'uscita x 0,85 poteva venire piu' bassa della
+media (jimmy_mnason_final_test2 237: uscita 110, media 119; sinner 529: 111 e
+115), impossibile perche' la pallina in volo rallenta; e la media e' una misura
+diretta (distanza / tempo): coryell 438, nostra media 69 km/h, SwingVision 71
+(con lo 0,85 sarebbe stata 59). Lo 0,85 del 2 ottobre serviva per uscite
+gonfiate che oggi fermano i tetti per colpo, il "circa" (media sotto il 65%
+dell'uscita) e il rimbalzo nel calcolo.
 """
 
 import argparse
@@ -53,7 +63,7 @@ from collections import Counter
 
 import numpy as np
 
-CORREZIONE_VELOCITA = 0.85   # velocita' mostrate = calcolate x 0,85 (vedi sopra); 1.0 = nessuna correzione
+CORREZIONE_VELOCITA = 1.0    # velocita' mostrate = calcolate x questo; dal 17/10 1.0, nessuna correzione (prima 0,85)
 
 TIPI = ["servizio", "dritto", "rovescio"]
 NOMI = {"servizio": "Servizi", "dritto": "Dritti", "rovescio": "Rovesci", "totale": "Totale"}
@@ -117,7 +127,9 @@ def riga_tipo(colpi, tipo):
     corte_serie = sum(1 for c in cs if c.get("rimbalzo_trovato_come") == "serie")
     # velocita' mostrate: corrette (CORREZIONE_VELOCITA)
     vel = [(corretta(x[0]), x[1]) for x in map(velocita_uscita, cs) if x is not None]
-    volo = [corretta(c["velocita_media_kmh"]) for c in cs if c.get("velocita_media_kmh", "") not in ("", None)]
+    # media del volo: anche quelle dalla traiettoria (passo 7b, 17/10), contate a parte in volo_stimate
+    con_media = [c for c in cs if c.get("velocita_media_kmh", "") not in ("", None)]
+    volo = [corretta(c["velocita_media_kmh"]) for c in con_media]
     con_esito = len(dentro) + len(fuori)
     return {
         "colpo": tipo, "colpi": len(cs),
@@ -133,6 +145,7 @@ def riga_tipo(colpi, tipo):
         "uscita_misurate": sum(1 for _, k in vel if k == "misurata"),
         "uscita_stimate": sum(1 for _, k in vel if k == "stimata"),
         "volo_media_kmh": _media(volo), "volo_colpi": len(volo),
+        "volo_stimate": sum(1 for c in con_media if c.get("velocita_media_fonte") == "stimata dal modello"),
         "direzioni": dict(Counter(c["direzione"] for c in cs if c.get("direzione")).most_common()),
         # dritti inside-out / inside-in (velocita_uscita.tipo_dritto): quanti, e quanti dentro su quelli con esito
         **{f"{k.replace('-', '_')}{s}": v for k in ("inside-out", "inside-in")
@@ -328,7 +341,10 @@ def scheda(rie, W=1920, H=1080, sfondo=None):
                 dett.append(f"{r['uscita_stimate']} stimat{'a' if r['uscita_stimate'] == 1 else 'e'}")
             d.text((cx, y + X(98)), ", ".join(dett), font=F(20), fill=TESTO_2)
             if r["volo_media_kmh"] is not None:
-                d.text((cx, y + X(126)), f"media in volo {r['volo_media_kmh']} km/h", font=F(20), fill=TESTO_2)
+                st = r.get("volo_stimate", 0)      # medie stimate dalla traiettoria (passo 7b): carattere un po'
+                d.text((cx, y + X(126)), f"media in volo {r['volo_media_kmh']} km/h"   # piu' piccolo per starci
+                       + (f" ({st} stimat{'a' if st == 1 else 'e'})" if st else ""), font=F(18 if st else 20),
+                       fill=TESTO_2)
         else:
             d.text((cx, y + X(50)), "–", font=F(40, True), fill=TESTO_3)
 
@@ -346,7 +362,7 @@ def scheda(rie, W=1920, H=1080, sfondo=None):
     note = ["Dentro/fuori dal rimbalzo nel campo avversario; \"esito non visto\" = rimbalzo non trovato, "
             "non conta né come dentro né come fuori.",
             "Velocità stimate dal rimbalzo: margine circa ±15-20%. Media in volo = distanza dal colpo al "
-            "rimbalzo / tempo di volo."]
+            "rimbalzo / tempo di volo (stimata dalla traiettoria se il rimbalzo non si vede)."]
     if rie.get("correzione_velocita", 1.0) != 1.0:
         note.append(f"Velocità mostrate = calcolate × {_num(rie['correzione_velocita'], 2)} "
                     f"(correzione di {round(100 * (1 - rie['correzione_velocita']))}% decisa a occhio, da verificare).")

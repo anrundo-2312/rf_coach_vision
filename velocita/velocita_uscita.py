@@ -594,6 +594,19 @@ def istante(t, f):
     return f / t["fps"] if tr is None else tr["k"][int(f)] / tr["fps"]
 
 
+def media_dal_modello(contatto, rimbalzo, t_volo, t_max=2.0):
+    """
+    Velocita' media del volo (km/h) secondo la traiettoria calcolata (gravita' + aria, senza rotazione):
+    distanza a terra dal contatto al rimbalzo previsto / tempo di volo previsto (ground_crossing). None se la
+    traiettoria non tocca terra entro t_max. Con il topspin la pallina vera scende prima: sui colpi con anche la
+    media misurata (sinner_final_test2, jimmy_mnason_final_test2) questa e' tra -13% e +4%, in media circa -6%.
+    """
+    if t_volo is None or not 0 < float(t_volo) < t_max - 0.01:
+        return None
+    d = float(np.hypot(float(rimbalzo[0]) - float(contatto[0]), float(rimbalzo[1]) - float(contatto[1])))
+    return int(round(d / float(t_volo) * 3.6))
+
+
 def misura(t, traccia, f_contatto, cam, rimbalzo=None, contatto=None):
     """
     La misura di un colpo: exit_speed sui punti della traccia da 8 frame prima a DURATA_DOPO_S dopo il contatto.
@@ -625,8 +638,10 @@ def misura(t, traccia, f_contatto, cam, rimbalzo=None, contatto=None):
                    depth_tol=TOLLERANZA_PROFONDITA, **extra)
     r["_partenza"] = punto_di_partenza(t, cam, piedi, contatto=r["impact_xyz_m"])
     angolo, x_arrivo, direzione = classifica_direzione(r["_partenza"][0], r["impact_xyz_m"], r["v0_ms"])
-    # rimbalzo previsto (gravita' + aria, senza rotazione): usato solo per il servizio
-    _, rimbalzo = ground_crossing(r["impact_xyz_m"], r["v0_ms"])
+    # rimbalzo previsto (gravita' + aria, senza rotazione): per il servizio e, dal 17/10, per la media del volo dal
+    # modello, usata da velocita_rimbalzo.py (passo 7b) quando il rimbalzo vero non si vede
+    t_volo, rimbalzo = ground_crossing(r["impact_xyz_m"], r["v0_ms"])
+    r["_media_modello_kmh"] = media_dal_modello(r["impact_xyz_m"], rimbalzo, t_volo)
     usati = [f for f in fs if f_contatto < f <= f_contatto + n_dopo]
     r["_traccia"] = [(int(f), float(x), float(y)) for f, (x, y) in zip(fs, p_arr)]   # per rifare il calcolo con il rimbalzo
     return r, piedi, angolo, x_arrivo, direzione, rimbalzo, usati
@@ -840,6 +855,7 @@ def analizza(video, cartella_dati="outputs/dati", calibrazione=None, verbose=Tru
                     "contatto_y_m": round(float(r["impact_xyz_m"][1]), 2),
                     "contatto_z_m": round(float(r["impact_xyz_m"][2]), 2),
                     "punti_usati": r["n_points"], "errore_px": round(r["rms_px"], 1), "nota": "",
+                    "_media_modello_kmh": r["_media_modello_kmh"],   # velocita_rimbalzo.py, passo 7b
                     "_punti": [(f, *traccia[f][:2]) for f in usati],
                     "_traccia": r["_traccia"]})      # per il calcolo con il rimbalzo (velocita_rimbalzo.py, passo 8)
             except (ValueError, IndexError, np.linalg.LinAlgError) as e:
